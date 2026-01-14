@@ -25,7 +25,7 @@
 
 ### Pre-built Binaries
 
-Download the latest release from the [Releases page](https://github.com/yourusername/devboot/releases).
+Download the latest release from the [Releases page](https://github.com/tang-vu/devboot/releases).
 
 ### Build from Source
 
@@ -36,7 +36,7 @@ Download the latest release from the [Releases page](https://github.com/youruser
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/devboot.git
+git clone https://github.com/tang-vu/devboot.git
 cd devboot
 
 # Install dependencies
