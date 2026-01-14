@@ -246,7 +246,7 @@ impl ProcessManager {
             });
         }
 
-        // Spawn thread to read stderr
+        // Spawn thread to read stderr (many tools output to stderr, not just errors)
         if let Some(stderr) = stderr {
             let processes = Arc::clone(&processes);
             let app_handle = Arc::clone(&app_handle);
@@ -257,7 +257,8 @@ impl ProcessManager {
                 for line in reader.lines() {
                     if let Ok(line) = line {
                         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
-                        let log_line = format!("[{}] [ERR] {}", timestamp, line);
+                        // Don't prefix with [ERR] - many tools use stderr for normal output
+                        let log_line = format!("[{}] {}", timestamp, line);
                         
                         {
                             let mut procs = processes.lock().unwrap();
