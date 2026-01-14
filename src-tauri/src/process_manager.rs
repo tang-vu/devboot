@@ -166,11 +166,16 @@ impl ProcessManager {
             .collect();
         let script = full_commands.join(" && ");
 
-        // Spawn the process
+        // Spawn the process with UTF-8 encoding for Python and other tools
         let mut child = Command::new(&self.git_bash_path)
             .args(["-c", &script])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // Set UTF-8 encoding environment variables
+            .env("PYTHONIOENCODING", "utf-8")
+            .env("PYTHONUTF8", "1")
+            .env("LANG", "en_US.UTF-8")
+            .env("LC_ALL", "en_US.UTF-8")
             .creation_flags(0x08000000) // CREATE_NO_WINDOW on Windows
             .spawn()
             .map_err(|e| format!("Failed to start process: {}", e))?;
