@@ -1,6 +1,6 @@
 [package]
 name = "devboot"
-version = "0.1.0"
+version = "1.0.1"
 description = "GitBash Management App - Auto-run projects on startup"
 authors = ["DevBoot Contributors"]
 edition = "2021"

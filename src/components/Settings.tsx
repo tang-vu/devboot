@@ -111,7 +111,7 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
                     <div className="settings-section support-section">
                         <h3>Support & About</h3>
                         <div className="about-info">
-                            <p className="app-name">DevBoot v0.1.1</p>
+                            <p className="app-name">DevBoot v1.0.1</p>
                             <p className="author">Made by <strong>tang-vu</strong></p>
                             <p className="description">GitBash Management App for Windows</p>
                         </div>
