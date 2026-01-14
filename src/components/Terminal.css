@@ -1,0 +1,181 @@
+.terminal {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #0d1117;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.terminal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.terminal-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.terminal-icon {
+    font-size: 1.1rem;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+
+.status-badge.running {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.status-badge.stopped {
+    background: rgba(107, 114, 128, 0.2);
+    color: #9ca3af;
+}
+
+.terminal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.term-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.term-btn.start {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.term-btn.start:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+}
+
+.term-btn.stop {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+}
+
+.term-btn.stop:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+}
+
+.term-btn.restart {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.term-btn.restart:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+}
+
+.term-btn.clear {
+    background: rgba(255, 255, 255, 0.1);
+    color: #9ca3af;
+}
+
+.term-btn.clear:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.terminal-body {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.terminal-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #6b7280;
+    text-align: center;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.terminal-empty p {
+    margin: 4px 0;
+}
+
+.empty-hint {
+    font-size: 0.8rem;
+    color: #4b5563;
+}
+
+.log-container {
+    min-height: 100%;
+}
+
+.log-line {
+    padding: 2px 0;
+    word-wrap: break-word;
+    color: #c9d1d9;
+}
+
+.log-error {
+    color: #f87171;
+}
+
+.log-warn {
+    color: #fbbf24;
+}
+
+.log-success {
+    color: #34d399;
+}
+
+/* Scrollbar styling */
+.terminal-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.terminal-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.terminal-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
