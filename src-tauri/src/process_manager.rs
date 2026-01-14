@@ -533,7 +533,19 @@ impl ProcessManager {
         
         if let Some(info) = procs.get_mut(project_id) {
             if let Some(ref mut child) = info.child {
-                child.kill().map_err(|e| format!("Failed to kill process: {}", e))?;
+                let pid = child.id();
+                
+                // On Windows, use taskkill to kill the entire process tree
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                        .output();
+                }
+                
+                // Fallback: also try normal kill
+                let _ = child.kill();
                 let _ = child.wait(); // Wait for cleanup
             }
             info.status = ProcessStatus::Stopped;
@@ -587,7 +599,18 @@ impl ProcessManager {
         let mut procs = self.processes.lock().unwrap();
         for (project_id, info) in procs.iter_mut() {
             if let Some(ref mut child) = info.child {
-                child.kill().ok();
+                let pid = child.id();
+                
+                // On Windows, use taskkill to kill the entire process tree
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .creation_flags(0x08000000)
+                        .output();
+                }
+                
+                let _ = child.kill();
                 let _ = child.wait();
             }
             info.status = ProcessStatus::Stopped;
