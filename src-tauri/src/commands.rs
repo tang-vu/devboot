@@ -170,3 +170,25 @@ pub fn disable_auto_start() -> Result<(), String> {
 pub fn is_auto_start_enabled() -> bool {
     startup::is_auto_start_enabled()
 }
+
+// ============ Detection Commands ============
+
+use crate::detector;
+use serde::Serialize;
+
+#[derive(Serialize)]
+pub struct DetectedProjectInfo {
+    pub name: String,
+    pub project_type: String,
+    pub suggested_commands: Vec<String>,
+}
+
+#[tauri::command]
+pub fn detect_project_from_path(path: String) -> DetectedProjectInfo {
+    let detected = detector::detect_project(&path);
+    DetectedProjectInfo {
+        name: detected.name,
+        project_type: detected.project_type,
+        suggested_commands: detected.suggested_commands,
+    }
+}

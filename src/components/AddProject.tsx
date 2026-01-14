@@ -1,6 +1,13 @@
-import { useState } from 'react';
+import { useState, DragEvent } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Project } from '../types';
 import './AddProject.css';
+
+interface DetectedProjectInfo {
+    name: string;
+    project_type: string;
+    suggested_commands: string[];
+}
 
 interface AddProjectProps {
     project?: Project | null;
@@ -12,6 +19,77 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     const [name, setName] = useState(project?.name || '');
     const [path, setPath] = useState(project?.path || '');
     const [commands, setCommands] = useState(project?.commands.join('\n') || '');
+    const [projectType, setProjectType] = useState<string>('');
+    const [isDragOver, setIsDragOver] = useState(false);
+    const [isDetecting, setIsDetecting] = useState(false);
+
+    const detectProject = async (folderPath: string) => {
+        setIsDetecting(true);
+        try {
+            const detected = await invoke<DetectedProjectInfo>('detect_project_from_path', {
+                path: folderPath
+            });
+
+            setName(detected.name);
+            setPath(folderPath);
+            setProjectType(detected.project_type);
+
+            if (detected.suggested_commands.length > 0) {
+                setCommands(detected.suggested_commands.join('\n'));
+            }
+        } catch (error) {
+            console.error('Failed to detect project:', error);
+        } finally {
+            setIsDetecting(false);
+        }
+    };
+
+    const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(true);
+    };
+
+    const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+    };
+
+    const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            // Get the folder path from dropped item
+            const file = files[0];
+            // For folders, we need the path - webkitRelativePath or path
+            let folderPath = (file as any).path || file.name;
+
+            // If it's a file, get parent directory
+            if (folderPath.includes('.')) {
+                folderPath = folderPath.substring(0, folderPath.lastIndexOf('\\'));
+            }
+
+            await detectProject(folderPath);
+        }
+    };
+
+    const handlePathChange = async (newPath: string) => {
+        setPath(newPath);
+
+        // Auto-detect when path looks complete (ends with folder name, not slash)
+        if (newPath && !newPath.endsWith('/') && !newPath.endsWith('\\') && newPath.length > 5) {
+            // Debounce - wait a bit before detecting
+            setTimeout(() => {
+                if (newPath === path || newPath.length > path.length) {
+                    detectProject(newPath);
+                }
+            }, 500);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -36,6 +114,34 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
 
                 <form onSubmit={handleSubmit}>
                     <div className="modal-body">
+                        {/* Drag & Drop Zone */}
+                        <div
+                            className={`drop-zone ${isDragOver ? 'drag-over' : ''} ${isDetecting ? 'detecting' : ''}`}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                        >
+                            {isDetecting ? (
+                                <>
+                                    <span className="drop-icon">🔍</span>
+                                    <p>Detecting project type...</p>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="drop-icon">📂</span>
+                                    <p>Drag & drop a folder here</p>
+                                    <p className="drop-hint">or fill in the form below</p>
+                                </>
+                            )}
+                        </div>
+
+                        {projectType && (
+                            <div className="detected-type">
+                                <span className="type-badge">{projectType}</span>
+                                <span>Project detected!</span>
+                            </div>
+                        )}
+
                         <div className="form-group">
                             <label htmlFor="project-name">Project Name</label>
                             <input
@@ -54,7 +160,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                 id="project-path"
                                 type="text"
                                 value={path}
-                                onChange={e => setPath(e.target.value)}
+                                onChange={e => handlePathChange(e.target.value)}
                                 placeholder="e.g. C:/Users/You/Documents/GitHub/mybot"
                                 required
                             />

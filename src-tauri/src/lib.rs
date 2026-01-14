@@ -3,6 +3,7 @@
 
 mod commands;
 mod config;
+mod detector;
 mod process_manager;
 mod startup;
 
@@ -36,6 +37,8 @@ pub fn run() {
             commands::enable_auto_start,
             commands::disable_auto_start,
             commands::is_auto_start_enabled,
+            // Detection commands
+            commands::detect_project_from_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DevBoot");
