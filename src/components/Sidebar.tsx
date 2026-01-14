@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Project, ProcessStatus } from '../types';
 import './Sidebar.css';
 
@@ -8,6 +9,8 @@ interface SidebarProps {
     onSelect: (id: string) => void;
     onStart: (id: string) => void;
     onStop: (id: string) => void;
+    onEdit: (project: Project) => void;
+    onDelete: (project: Project) => void;
     onAddProject: () => void;
     onOpenSettings: () => void;
 }
@@ -19,15 +22,19 @@ export function Sidebar({
     onSelect,
     onStart,
     onStop,
+    onEdit,
+    onDelete,
     onAddProject,
     onOpenSettings,
 }: SidebarProps) {
+    const [searchQuery, setSearchQuery] = useState('');
+
     const getStatusColor = (status: ProcessStatus) => {
         switch (status) {
-            case 'running': return '#10b981';
-            case 'error': return '#ef4444';
-            case 'restarting': return '#f59e0b';
-            default: return '#6b7280';
+            case 'running': return 'var(--success)';
+            case 'error': return 'var(--error)';
+            case 'restarting': return 'var(--warning)';
+            default: return 'var(--text-muted)';
         }
     };
 
@@ -40,6 +47,12 @@ export function Sidebar({
         }
     };
 
+    // Filter projects by search query
+    const filteredProjects = projects.filter(project =>
+        project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        project.path.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <aside className="sidebar">
             <div className="sidebar-header">
@@ -50,9 +63,35 @@ export function Sidebar({
             </div>
 
             <div className="sidebar-section">
-                <h2 className="section-title">PROJECTS</h2>
+                <div className="section-header">
+                    <h2 className="section-title">PROJECTS</h2>
+                    <span className="project-count">{projects.length}</span>
+                </div>
+
+                {/* Search input */}
+                {projects.length > 0 && (
+                    <div className="search-box">
+                        <span className="search-icon">🔍</span>
+                        <input
+                            type="text"
+                            placeholder="Search projects..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="search-input"
+                        />
+                        {searchQuery && (
+                            <button 
+                                className="search-clear"
+                                onClick={() => setSearchQuery('')}
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 <div className="project-list">
-                    {projects.map((project) => {
+                    {filteredProjects.map((project) => {
                         const status = statuses[project.id] || 'stopped';
                         const isSelected = selectedId === project.id;
                         const isRunning = status === 'running';
@@ -82,7 +121,7 @@ export function Sidebar({
                                                 e.stopPropagation();
                                                 onStop(project.id);
                                             }}
-                                            title="Stop"
+                                            title="Stop (Ctrl+.)"
                                         >
                                             ■
                                         </button>
@@ -93,15 +132,41 @@ export function Sidebar({
                                                 e.stopPropagation();
                                                 onStart(project.id);
                                             }}
-                                            title="Start"
+                                            title="Start (Ctrl+Enter)"
                                         >
                                             ▶
                                         </button>
                                     )}
+                                    <button
+                                        className="action-btn edit"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEdit(project);
+                                        }}
+                                        title="Edit project"
+                                    >
+                                        ✎
+                                    </button>
+                                    <button
+                                        className="action-btn delete"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDelete(project);
+                                        }}
+                                        title="Delete project"
+                                    >
+                                        🗑
+                                    </button>
                                 </div>
                             </div>
                         );
                     })}
+
+                    {filteredProjects.length === 0 && searchQuery && (
+                        <div className="no-results">
+                            <span>No projects match "{searchQuery}"</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

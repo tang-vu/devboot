@@ -34,12 +34,81 @@
   overflow-y: auto;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .section-title {
   font-size: 0.7rem;
   font-weight: 600;
   color: #6b7280;
   letter-spacing: 1px;
-  margin: 0 0 12px 0;
+  margin: 0;
+}
+
+.project-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Search box */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.search-box:focus-within {
+  border-color: var(--accent-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-icon {
+  font-size: 0.8rem;
+  opacity: 0.5;
+}
+
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 2px 4px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.search-clear:hover {
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 .project-list {
@@ -143,6 +212,36 @@
 .action-btn.stop:hover {
   background: rgba(239, 68, 68, 0.4);
   transform: scale(1.1);
+}
+
+.action-btn.edit {
+  background: rgba(99, 102, 241, 0.2);
+  color: #6366f1;
+}
+
+.action-btn.edit:hover {
+  background: rgba(99, 102, 241, 0.4);
+  transform: scale(1.1);
+}
+
+.action-btn.delete {
+  background: rgba(239, 68, 68, 0.15);
+  color: #9ca3af;
+  font-size: 0.7rem;
+}
+
+.action-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  transform: scale(1.1);
+}
+
+/* No results state */
+.no-results {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .sidebar-footer {

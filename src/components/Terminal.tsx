@@ -7,6 +7,7 @@ interface TerminalProps {
     onClear: () => void;
     onRestart: () => void;
     onStop: () => void;
+    onStart: () => void;
     isRunning: boolean;
 }
 
@@ -16,6 +17,7 @@ export function Terminal({
     onClear,
     onRestart,
     onStop,
+    onStart,
     isRunning,
 }: TerminalProps) {
     const logsEndRef = useRef<HTMLDivElement>(null);
@@ -41,6 +43,32 @@ export function Terminal({
         return log;
     };
 
+    // Export logs as text file
+    const handleExportLogs = () => {
+        if (logs.length === 0) return;
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `${projectName.replace(/\s+/g, '_')}_logs_${timestamp}.txt`;
+        const content = [
+            `DevBoot Logs - ${projectName}`,
+            `Exported: ${new Date().toLocaleString()}`,
+            `Total lines: ${logs.length}`,
+            '='.repeat(50),
+            '',
+            ...logs
+        ].join('\n');
+
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div className="terminal">
             <div className="terminal-header">
@@ -53,18 +81,26 @@ export function Terminal({
                 </div>
                 <div className="terminal-actions">
                     {isRunning ? (
-                        <button className="term-btn stop" onClick={onStop} title="Stop">
+                        <button className="term-btn stop" onClick={onStop} title="Stop (Ctrl+.)">
                             ■ Stop
                         </button>
                     ) : (
-                        <button className="term-btn start" onClick={onRestart} title="Start">
+                        <button className="term-btn start" onClick={onStart} title="Start (Ctrl+Enter)">
                             ▶ Start
                         </button>
                     )}
-                    <button className="term-btn restart" onClick={onRestart} title="Restart">
+                    <button className="term-btn restart" onClick={onRestart} title="Restart (Ctrl+R)">
                         ↻ Restart
                     </button>
-                    <button className="term-btn clear" onClick={onClear} title="Clear logs">
+                    <button 
+                        className="term-btn export" 
+                        onClick={handleExportLogs} 
+                        title="Export logs"
+                        disabled={logs.length === 0}
+                    >
+                        📥 Export
+                    </button>
+                    <button className="term-btn clear" onClick={onClear} title="Clear logs (Ctrl+L)">
                         🗑 Clear
                     </button>
                 </div>
@@ -87,6 +123,16 @@ export function Terminal({
                         <div ref={logsEndRef} />
                     </div>
                 )}
+            </div>
+
+            <div className="terminal-footer">
+                <span className="log-count">{logs.length} lines</span>
+                <div className="shortcuts-hint">
+                    <span>Ctrl+Enter: Start</span>
+                    <span>Ctrl+.: Stop</span>
+                    <span>Ctrl+R: Restart</span>
+                    <span>Ctrl+L: Clear</span>
+                </div>
             </div>
         </div>
     );

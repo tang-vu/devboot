@@ -1,5 +1,8 @@
 /* DevBoot - Global Styles */
 
+/* Import Google Font - must be first */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 /* Reset and base */
 * {
   margin: 0;
@@ -120,6 +123,13 @@ body {
   color: var(--text-muted);
 }
 
+.shortcut-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 12px;
+  opacity: 0.6;
+}
+
 /* Global button styles */
 .btn {
   padding: 12px 24px;
@@ -183,5 +193,36 @@ body {
   outline-offset: 2px;
 }
 
-/* Import Google Font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* Error Boundary */
+.error-boundary {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: var(--bg-primary);
+}
+
+.error-content {
+  text-align: center;
+  padding: 40px;
+  max-width: 400px;
+}
+
+.error-icon {
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.error-content h2 {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.error-message {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}

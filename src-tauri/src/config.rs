@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Project configuration for a single project
@@ -11,6 +12,8 @@ pub struct Project {
     pub auto_start: bool,
     pub restart_on_crash: bool,
     pub enabled: bool,
+    #[serde(default)]
+    pub env_vars: HashMap<String, String>,
 }
 
 impl Project {
@@ -23,6 +26,7 @@ impl Project {
             auto_start: true,
             restart_on_crash: true,
             enabled: true,
+            env_vars: HashMap::new(),
         }
     }
 }

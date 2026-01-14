@@ -106,6 +106,22 @@
     color: #fff;
 }
 
+.term-btn.export {
+    background: rgba(99, 102, 241, 0.2);
+    color: #a5b4fc;
+}
+
+.term-btn.export:hover {
+    background: rgba(99, 102, 241, 0.3);
+    color: #fff;
+}
+
+.term-btn.export:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .terminal-body {
     flex: 1;
     padding: 16px;
@@ -178,4 +194,30 @@
 
 .terminal-body::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
+}
+
+/* Terminal footer */
+.terminal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.log-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.shortcuts-hint {
+    display: flex;
+    gap: 16px;
+}
+
+.shortcuts-hint span {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    opacity: 0.6;
 }

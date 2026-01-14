@@ -1,18 +1,47 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Project, Settings, ProcessStatus } from '../types';
+
+// Event payload types
+interface LogPayload {
+    project_id: string;
+    log: string;
+}
+
+interface StatusPayload {
+    project_id: string;
+    status: ProcessStatus;
+}
+
+interface CrashPayload {
+    project_id: string;
+    restart_count: number;
+    will_restart: boolean;
+}
 
 export function useProjects() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [statuses, setStatuses] = useState<Record<string, ProcessStatus>>({});
     const [logs, setLogs] = useState<Record<string, string[]>>({});
+    const unlistenRefs = useRef<UnlistenFn[]>([]);
 
     // Load projects from backend
     const loadProjects = useCallback(async () => {
         try {
             const data = await invoke<Project[]>('get_projects');
             setProjects(data);
+            
+            // Initialize statuses for each project
+            for (const project of data) {
+                const status = await invoke<string>('get_project_status', { projectId: project.id });
+                setStatuses(prev => ({ ...prev, [project.id]: status as ProcessStatus }));
+                
+                // Load existing logs
+                const projectLogs = await invoke<string[]>('get_project_logs', { projectId: project.id });
+                setLogs(prev => ({ ...prev, [project.id]: projectLogs }));
+            }
         } catch (error) {
             console.error('Failed to load projects:', error);
         } finally {
@@ -20,122 +49,101 @@ export function useProjects() {
         }
     }, []);
 
-    // Add new project
-    const addProject = async (name: string, path: string, commands: string[]) => {
-        try {
-            const project = await invoke<Project>('add_project', { name, path, commands });
-            setProjects(prev => [...prev, project]);
-            return project;
-        } catch (error) {
-            console.error('Failed to add project:', error);
-            throw error;
-        }
-    };
+    // Setup Tauri event listeners
+    useEffect(() => {
+        const setupListeners = async () => {
+            // Listen for log events
+            const unlistenLog = await listen<LogPayload>('process-log', (event) => {
+                const { project_id, log } = event.payload;
+                setLogs(prev => ({
+                    ...prev,
+                    [project_id]: [...(prev[project_id] || []), log].slice(-1000), // Keep last 1000 logs
+                }));
+            });
 
-    // Update project
-    const updateProject = async (project: Project) => {
-        try {
-            await invoke('update_project', { project });
-            setProjects(prev => prev.map(p => p.id === project.id ? project : p));
-        } catch (error) {
-            console.error('Failed to update project:', error);
-            throw error;
-        }
-    };
+            // Listen for status events
+            const unlistenStatus = await listen<StatusPayload>('process-status', (event) => {
+                const { project_id, status } = event.payload;
+                setStatuses(prev => ({ ...prev, [project_id]: status }));
+            });
 
-    // Delete project
-    const deleteProject = async (projectId: string) => {
-        try {
-            await invoke('delete_project', { projectId });
-            setProjects(prev => prev.filter(p => p.id !== projectId));
-        } catch (error) {
-            console.error('Failed to delete project:', error);
-            throw error;
-        }
-    };
+            // Listen for crash events
+            const unlistenCrash = await listen<CrashPayload>('process-crash', (event) => {
+                const { project_id, restart_count, will_restart } = event.payload;
+                console.log(`Process ${project_id} crashed. Restart count: ${restart_count}, Will restart: ${will_restart}`);
+            });
 
-    // Start project
-    const startProject = async (projectId: string) => {
-        try {
-            await invoke('start_project', { projectId });
-            setStatuses(prev => ({ ...prev, [projectId]: 'running' }));
-        } catch (error) {
-            console.error('Failed to start project:', error);
-            setStatuses(prev => ({ ...prev, [projectId]: 'error' }));
-            throw error;
-        }
-    };
+            unlistenRefs.current = [unlistenLog, unlistenStatus, unlistenCrash];
+        };
 
-    // Stop project
-    const stopProject = async (projectId: string) => {
-        try {
-            await invoke('stop_project', { projectId });
-            setStatuses(prev => ({ ...prev, [projectId]: 'stopped' }));
-        } catch (error) {
-            console.error('Failed to stop project:', error);
-            throw error;
-        }
-    };
+        setupListeners();
 
-    // Restart project
-    const restartProject = async (projectId: string) => {
-        try {
-            setStatuses(prev => ({ ...prev, [projectId]: 'restarting' }));
-            await invoke('restart_project', { projectId });
-            setStatuses(prev => ({ ...prev, [projectId]: 'running' }));
-        } catch (error) {
-            console.error('Failed to restart project:', error);
-            throw error;
-        }
-    };
+        // Cleanup listeners on unmount
+        return () => {
+            unlistenRefs.current.forEach(unlisten => unlisten());
+        };
+    }, []);
 
-    // Get project status
-    const getStatus = async (projectId: string) => {
-        try {
-            const status = await invoke<string>('get_project_status', { projectId });
-            setStatuses(prev => ({ ...prev, [projectId]: status as ProcessStatus }));
-            return status as ProcessStatus;
-        } catch (error) {
-            return 'stopped' as ProcessStatus;
-        }
-    };
-
-    // Get project logs
-    const getLogs = async (projectId: string) => {
-        try {
-            const projectLogs = await invoke<string[]>('get_project_logs', { projectId });
-            setLogs(prev => ({ ...prev, [projectId]: projectLogs }));
-            return projectLogs;
-        } catch (error) {
-            return [];
-        }
-    };
-
-    // Clear logs
-    const clearLogs = async (projectId: string) => {
-        try {
-            await invoke('clear_project_logs', { projectId });
-            setLogs(prev => ({ ...prev, [projectId]: [] }));
-        } catch (error) {
-            console.error('Failed to clear logs:', error);
-        }
-    };
-
-    // Poll for status and logs updates
+    // Load projects on mount
     useEffect(() => {
         loadProjects();
     }, [loadProjects]);
 
-    useEffect(() => {
-        const interval = setInterval(async () => {
-            for (const project of projects) {
-                await getStatus(project.id);
-                await getLogs(project.id);
-            }
-        }, 1000);
+    // Add new project
+    const addProject = async (name: string, path: string, commands: string[]) => {
+        const project = await invoke<Project>('add_project', { name, path, commands });
+        setProjects(prev => [...prev, project]);
+        setStatuses(prev => ({ ...prev, [project.id]: 'stopped' }));
+        setLogs(prev => ({ ...prev, [project.id]: [] }));
+        return project;
+    };
 
-        return () => clearInterval(interval);
-    }, [projects]);
+    // Update project
+    const updateProject = async (project: Project) => {
+        await invoke('update_project', { project });
+        setProjects(prev => prev.map(p => p.id === project.id ? project : p));
+    };
+
+    // Delete project
+    const deleteProject = async (projectId: string) => {
+        await invoke('delete_project', { projectId });
+        setProjects(prev => prev.filter(p => p.id !== projectId));
+        setStatuses(prev => {
+            const newStatuses = { ...prev };
+            delete newStatuses[projectId];
+            return newStatuses;
+        });
+        setLogs(prev => {
+            const newLogs = { ...prev };
+            delete newLogs[projectId];
+            return newLogs;
+        });
+    };
+
+    // Start project
+    const startProject = async (projectId: string) => {
+        await invoke('start_project', { projectId });
+        // Status will be updated via event
+    };
+
+    // Stop project
+    const stopProject = async (projectId: string) => {
+        await invoke('stop_project', { projectId });
+        // Status will be updated via event
+    };
+
+    // Restart project
+    const restartProject = async (projectId: string) => {
+        setStatuses(prev => ({ ...prev, [projectId]: 'restarting' }));
+        await invoke('restart_project', { projectId });
+        // Status will be updated via event
+    };
+
+    // Clear logs
+    const clearLogs = async (projectId: string) => {
+        await invoke('clear_project_logs', { projectId });
+        setLogs(prev => ({ ...prev, [projectId]: [] }));
+    };
 
     return {
         projects,
@@ -171,19 +179,14 @@ export function useSettings() {
     }, []);
 
     const updateSettings = async (newSettings: Settings) => {
-        try {
-            await invoke('update_settings', { settings: newSettings });
-            setSettings(newSettings);
+        await invoke('update_settings', { settings: newSettings });
+        setSettings(newSettings);
 
-            // Handle auto-start setting
-            if (newSettings.auto_start_with_windows) {
-                await invoke('enable_auto_start');
-            } else {
-                await invoke('disable_auto_start');
-            }
-        } catch (error) {
-            console.error('Failed to update settings:', error);
-            throw error;
+        // Handle auto-start setting
+        if (newSettings.auto_start_with_windows) {
+            await invoke('enable_auto_start');
+        } else {
+            await invoke('disable_auto_start');
         }
     };
 

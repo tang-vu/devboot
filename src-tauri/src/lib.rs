@@ -8,13 +8,40 @@ mod process_manager;
 mod startup;
 
 use commands::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
+        .setup(|app| {
+            // Inject app handle into process manager for event emission
+            let state = app.state::<AppState>();
+            state.process_manager.set_app_handle(app.handle().clone());
+            
+            // Auto-start projects that have auto_start enabled
+            let config = state.config.lock().unwrap();
+            let projects_to_start: Vec<_> = config.projects
+                .iter()
+                .filter(|p| p.auto_start && p.enabled)
+                .cloned()
+                .collect();
+            drop(config);
+
+            for project in projects_to_start {
+                let _ = state.process_manager.start_project(
+                    &project.id,
+                    &project.path,
+                    &project.commands,
+                    project.restart_on_crash,
+                );
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Config commands
             commands::get_config,
