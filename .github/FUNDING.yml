@@ -1,0 +1,8 @@
+# Support DevBoot development
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# Crypto donations (multi-chain)
+custom:
+  - "https://bscscan.com/address/0x051BF9b67aC43BbB461A33E13c21218f304E31BB"
+  - "https://polygonscan.com/address/0x051BF9b67aC43BbB461A33E13c21218f304E31BB"
+  - "https://arbiscan.io/address/0x051BF9b67aC43BbB461A33E13c21218f304E31BB"

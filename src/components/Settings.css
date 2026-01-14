@@ -232,3 +232,135 @@
     transform: translateY(-2px);
     box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
 }
+
+/* Support & About Section */
+.support-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 20px;
+    margin-top: 8px;
+}
+
+.about-info {
+    text-align: center;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    margin-bottom: 16px;
+}
+
+.about-info .app-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    margin: 0 0 4px 0;
+}
+
+.about-info .author {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin: 0 0 4px 0;
+}
+
+.about-info .author strong {
+    color: #10b981;
+}
+
+.about-info .description {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.support-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.support-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.support-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.support-btn.github:hover {
+    border-color: #fbbf24;
+    color: #fbbf24;
+}
+
+.donate-section {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.donate-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0 0 10px 0;
+}
+
+.wallet-box {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wallet-box:hover {
+    border-color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.wallet-box code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: #10b981;
+    word-break: break-all;
+}
+
+.wallet-box .copy-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.chain-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.chain-links button {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chain-links button:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+}

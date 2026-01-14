@@ -114,6 +114,26 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+## 💖 Support the Project
+
+If you find DevBoot useful, consider supporting its development!
+
+**Ways to support:**
+- ⭐ **Star** this repository
+- 📢 **Share** with friends and on social media
+- 🐛 **Report bugs** and suggest features
+- 💻 **Contribute** code improvements
+
+**Buy me a coffee (Crypto):**
+
+| Network | Address |
+|---------|---------|
+| BSC (BNB Smart Chain) | [`0x051BF9b67aC43BbB461A33E13c21218f304E31BB`](https://bscscan.com/address/0x051BF9b67aC43BbB461A33E13c21218f304E31BB) |
+| Polygon | [`0x051BF9b67aC43BbB461A33E13c21218f304E31BB`](https://polygonscan.com/address/0x051BF9b67aC43BbB461A33E13c21218f304E31BB) |
+| Arbitrum | [`0x051BF9b67aC43BbB461A33E13c21218f304E31BB`](https://arbiscan.io/address/0x051BF9b67aC43BbB461A33E13c21218f304E31BB) |
+
+> All networks use the same wallet address: `0x051BF9b67aC43BbB461A33E13c21218f304E31BB`
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
