@@ -21,6 +21,10 @@
 |----------------|----------|
 | ![Main](./docs/main.png) | ![Settings](./docs/settings.png) |
 
+| Add Project |
+|-------------|
+| ![Add Project](./docs/add-project.png) |
+
 ## 📦 Installation
 
 ### Pre-built Binaries
