@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -83,6 +83,7 @@ impl ProcessInfo {
 /// Process manager to handle all running processes
 pub struct ProcessManager {
     processes: Arc<Mutex<HashMap<String, ProcessInfo>>>,
+    stdin_handles: Arc<Mutex<HashMap<String, ChildStdin>>>,
     git_bash_path: String,
     app_handle: Arc<Mutex<Option<AppHandle>>>,
 }
@@ -93,6 +94,7 @@ impl ProcessManager {
         
         Self {
             processes: Arc::new(Mutex::new(HashMap::new())),
+            stdin_handles: Arc::new(Mutex::new(HashMap::new())),
             git_bash_path,
             app_handle: Arc::new(Mutex::new(None)),
         }
@@ -169,6 +171,7 @@ impl ProcessManager {
         // Spawn the process with UTF-8 encoding for Python and other tools
         let mut child = Command::new(&self.git_bash_path)
             .args(["-c", &script])
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // Set UTF-8 encoding environment variables
@@ -180,10 +183,17 @@ impl ProcessManager {
             .spawn()
             .map_err(|e| format!("Failed to start process: {}", e))?;
 
-        // Capture stdout and stderr
+        // Capture stdin, stdout, and stderr
+        let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let pid = project_id.to_string();
+
+        // Store stdin handle separately (ChildStdin is not Send/Sync safe in ProcessInfo)
+        if let Some(stdin_handle) = stdin {
+            let mut stdin_handles = self.stdin_handles.lock().unwrap();
+            stdin_handles.insert(project_id.to_string(), stdin_handle);
+        }
 
         // Create or update process info
         {
@@ -280,6 +290,7 @@ impl ProcessManager {
 
         // Spawn monitoring thread for crash detection
         let processes_monitor = Arc::clone(&self.processes);
+        let stdin_handles_monitor = Arc::clone(&self.stdin_handles);
         let app_handle_monitor = Arc::clone(&self.app_handle);
         let git_bash_path = self.git_bash_path.clone();
         let pid_monitor = pid.clone();
@@ -287,6 +298,7 @@ impl ProcessManager {
         thread::spawn(move || {
             Self::monitor_process(
                 processes_monitor,
+                stdin_handles_monitor,
                 app_handle_monitor,
                 git_bash_path,
                 pid_monitor,
@@ -299,6 +311,7 @@ impl ProcessManager {
     /// Monitor process for crashes and auto-restart
     fn monitor_process(
         processes: Arc<Mutex<HashMap<String, ProcessInfo>>>,
+        stdin_handles: Arc<Mutex<HashMap<String, ChildStdin>>>,
         app_handle: Arc<Mutex<Option<AppHandle>>>,
         git_bash_path: String,
         project_id: String,
@@ -415,14 +428,22 @@ impl ProcessManager {
 
                 match Command::new(&git_bash_path)
                     .args(["-c", &script])
+                    .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .creation_flags(0x08000000)
                     .spawn()
                 {
                     Ok(mut child) => {
+                        let stdin = child.stdin.take();
                         let stdout = child.stdout.take();
                         let stderr = child.stderr.take();
+
+                        // Store stdin handle for the restarted process
+                        if let Some(stdin_handle) = stdin {
+                            let mut stdin_map = stdin_handles.lock().unwrap();
+                            stdin_map.insert(project_id.clone(), stdin_handle);
+                        }
 
                         {
                             let mut procs = processes.lock().unwrap();
@@ -552,6 +573,12 @@ impl ProcessManager {
             info.child = None;
             info.restart_count = 0; // Reset restart count
 
+            // Clear stdin handle
+            {
+                let mut stdin_handles = self.stdin_handles.lock().unwrap();
+                stdin_handles.remove(project_id);
+            }
+
             // Emit status changed
             self.emit_event("process-status", StatusPayload {
                 project_id: project_id.to_string(),
@@ -588,6 +615,53 @@ impl ProcessManager {
         }
     }
 
+    /// Send input to a running process
+    pub fn send_input(&self, project_id: &str, input: &str) -> Result<(), String> {
+        // Check if process is running
+        {
+            let procs = self.processes.lock().unwrap();
+            match procs.get(project_id) {
+                Some(info) if info.status == ProcessStatus::Running => {}
+                Some(_) => return Err("Process is not running".to_string()),
+                None => return Err("Project not found".to_string()),
+            }
+        }
+
+        // Get stdin handle and write input
+        let mut stdin_handles = self.stdin_handles.lock().unwrap();
+        if let Some(stdin) = stdin_handles.get_mut(project_id) {
+            // Write the input with a newline
+            let input_with_newline = format!("{}\n", input);
+            stdin
+                .write_all(input_with_newline.as_bytes())
+                .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+            stdin
+                .flush()
+                .map_err(|e| format!("Failed to flush stdin: {}", e))?;
+
+            // Echo the input to logs
+            let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+            let log_line = format!("[{}] > {}", timestamp, input);
+            
+            {
+                let mut procs = self.processes.lock().unwrap();
+                if let Some(info) = procs.get_mut(project_id) {
+                    info.add_log(log_line.clone());
+                }
+            }
+
+            // Emit log event for the echoed input
+            self.emit_event("process-log", LogPayload {
+                project_id: project_id.to_string(),
+                log: log_line,
+            });
+
+            Ok(())
+        } else {
+            Err("No stdin handle available for this process".to_string())
+        }
+    }
+
     /// Check if a project is running
     #[allow(dead_code)]
     pub fn is_running(&self, project_id: &str) -> bool {
@@ -620,6 +694,12 @@ impl ProcessManager {
                 project_id: project_id.clone(),
                 status: "stopped".to_string(),
             });
+        }
+
+        // Clear all stdin handles
+        {
+            let mut stdin_handles = self.stdin_handles.lock().unwrap();
+            stdin_handles.clear();
         }
     }
 }

@@ -150,6 +150,11 @@ pub fn clear_project_logs(state: State<AppState>, project_id: String) {
 }
 
 #[tauri::command]
+pub fn send_project_input(state: State<AppState>, project_id: String, input: String) -> Result<(), String> {
+    state.process_manager.send_input(&project_id, &input)
+}
+
+#[tauri::command]
 pub fn stop_all_projects(state: State<AppState>) {
     state.process_manager.stop_all();
 }

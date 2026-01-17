@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import './Terminal.css';
 
 interface TerminalProps {
+    projectId: string;
     projectName: string;
     logs: string[];
     onClear: () => void;
@@ -12,6 +14,7 @@ interface TerminalProps {
 }
 
 export function Terminal({
+    projectId,
     projectName,
     logs,
     onClear,
@@ -21,6 +24,8 @@ export function Terminal({
     isRunning,
 }: TerminalProps) {
     const logsEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [inputValue, setInputValue] = useState('');
 
     // Auto-scroll to bottom when new logs arrive
     useEffect(() => {
@@ -67,6 +72,29 @@ export function Terminal({
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+    };
+
+    // Handle sending input to the process
+    const handleSendInput = async () => {
+        if (!inputValue.trim() || !isRunning) return;
+        
+        try {
+            await invoke('send_project_input', { 
+                projectId, 
+                input: inputValue 
+            });
+            setInputValue('');
+        } catch (error) {
+            console.error('Failed to send input:', error);
+        }
+    };
+
+    // Handle key press in input field
+    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendInput();
+        }
     };
 
     return (
@@ -123,6 +151,29 @@ export function Terminal({
                         <div ref={logsEndRef} />
                     </div>
                 )}
+            </div>
+
+            {/* Terminal Input */}
+            <div className="terminal-input-container">
+                <span className="input-prompt">&gt;</span>
+                <input
+                    ref={inputRef}
+                    type="text"
+                    className="terminal-input"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    placeholder={isRunning ? "Type command and press Enter..." : "Start the process to send input"}
+                    disabled={!isRunning}
+                />
+                <button 
+                    className="input-send-btn"
+                    onClick={handleSendInput}
+                    disabled={!isRunning || !inputValue.trim()}
+                    title="Send (Enter)"
+                >
+                    Send
+                </button>
             </div>
 
             <div className="terminal-footer">

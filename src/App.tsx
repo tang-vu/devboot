@@ -216,6 +216,7 @@ function AppContent() {
       <main className="main-content">
         {selectedProject ? (
           <Terminal
+            projectId={selectedProject.id}
             projectName={selectedProject.name}
             logs={logs[selectedProject.id] || []}
             onClear={() => {
