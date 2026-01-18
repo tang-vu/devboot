@@ -155,6 +155,11 @@ pub fn send_project_input(state: State<AppState>, project_id: String, input: Str
 }
 
 #[tauri::command]
+pub fn send_project_interrupt(state: State<AppState>, project_id: String) -> Result<(), String> {
+    state.process_manager.send_interrupt(&project_id)
+}
+
+#[tauri::command]
 pub fn stop_all_projects(state: State<AppState>) {
     state.process_manager.stop_all();
 }

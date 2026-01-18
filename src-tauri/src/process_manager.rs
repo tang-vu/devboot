@@ -662,6 +662,51 @@ impl ProcessManager {
         }
     }
 
+    /// Send interrupt signal (Ctrl+C) to a running process
+    pub fn send_interrupt(&self, project_id: &str) -> Result<(), String> {
+        // Check if process is running
+        {
+            let procs = self.processes.lock().unwrap();
+            match procs.get(project_id) {
+                Some(info) if info.status == ProcessStatus::Running => {}
+                Some(_) => return Err("Process is not running".to_string()),
+                None => return Err("Project not found".to_string()),
+            }
+        }
+
+        // Send Ctrl+C character (0x03 = ETX = End of Text)
+        let mut stdin_handles = self.stdin_handles.lock().unwrap();
+        if let Some(stdin) = stdin_handles.get_mut(project_id) {
+            // Write Ctrl+C character
+            stdin
+                .write_all(&[0x03])
+                .map_err(|e| format!("Failed to send interrupt: {}", e))?;
+            stdin
+                .flush()
+                .map_err(|e| format!("Failed to flush: {}", e))?;
+
+            // Log the interrupt
+            let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+            let log_line = format!("[{}] ^C", timestamp);
+            
+            {
+                let mut procs = self.processes.lock().unwrap();
+                if let Some(info) = procs.get_mut(project_id) {
+                    info.add_log(log_line.clone());
+                }
+            }
+
+            self.emit_event("process-log", LogPayload {
+                project_id: project_id.to_string(),
+                log: log_line,
+            });
+
+            Ok(())
+        } else {
+            Err("No stdin handle available".to_string())
+        }
+    }
+
     /// Check if a project is running
     #[allow(dead_code)]
     pub fn is_running(&self, project_id: &str) -> bool {

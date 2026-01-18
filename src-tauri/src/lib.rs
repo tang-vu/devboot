@@ -60,6 +60,7 @@ pub fn run() {
             commands::get_project_logs,
             commands::clear_project_logs,
             commands::send_project_input,
+            commands::send_project_interrupt,
             commands::stop_all_projects,
             // Startup commands
             commands::enable_auto_start,

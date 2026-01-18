@@ -89,8 +89,27 @@ export function Terminal({
         }
     };
 
+    // Handle sending interrupt (Ctrl+C) to the process
+    const handleSendInterrupt = async () => {
+        if (!isRunning) return;
+        
+        try {
+            await invoke('send_project_interrupt', { projectId });
+        } catch (error) {
+            console.error('Failed to send interrupt:', error);
+        }
+    };
+
     // Handle key press in input field
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        // Ctrl+C - Send interrupt signal
+        if (e.ctrlKey && e.key === 'c' && isRunning) {
+            e.preventDefault();
+            handleSendInterrupt();
+            return;
+        }
+        
+        // Enter - Send input
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSendInput();
@@ -179,6 +198,7 @@ export function Terminal({
             <div className="terminal-footer">
                 <span className="log-count">{logs.length} lines</span>
                 <div className="shortcuts-hint">
+                    <span>Ctrl+C: Interrupt</span>
                     <span>Ctrl+Enter: Start</span>
                     <span>Ctrl+.: Stop</span>
                     <span>Ctrl+R: Restart</span>
