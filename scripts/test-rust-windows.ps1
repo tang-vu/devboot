@@ -43,7 +43,8 @@ foreach ($executable in $executables) {
             # Merge the dependency into an existing manifest, preserving its other settings.
             $resourceOption = "-updateresource:$executable;#1"
         } elseif (($probeOutput -join ' ') -match 'c101008c' -and
-                  ($probeOutput -join ' ') -match 'specified resource (type|name|data).*cannot be found') {
+                  (($probeOutput -join ' ') -match 'specified resource (type|name|data).*cannot be found' -or
+                   ($probeOutput -join ' ') -match 'specified image file did not contain a resource section')) {
             $resourceOption = "-outputresource:$executable;#1"
         } else {
             throw "Unable to inspect the test manifest: $probeOutput"
