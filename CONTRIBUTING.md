@@ -72,3 +72,27 @@ By contributing, you agree that your contributions will be licensed under the MI
 ---
 
 Thank you for helping make DevBoot better! ❤️
+
+## Validation
+
+```bash
+npm ci
+npm test
+npm run build
+# On Windows (PowerShell, with the Windows SDK installed):
+pwsh -File ./scripts/test-rust-windows.ps1
+# On other supported development hosts:
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
+```
+
+The frontend tests render the real form, App, and project hook with a synthetic
+Tauri bridge. Rust tests use Tauri's mock runtime and test-owned temporary config
+files to check IPC defaults and saved values. They do not launch project commands
+or change Windows startup settings. CI runs these checks on Windows; the tests do
+not replace manual Windows GUI acceptance testing.
+
+The Windows runner compiles every test target, embeds a Common Controls v6
+manifest in only the generated test executables, and runs each one. This handles
+[Tauri's Windows test-loader issue](https://github.com/tauri-apps/tauri/issues/13419)
+without changing the application's build or manifest. Compilation, manifest, or
+test failures fail the command.

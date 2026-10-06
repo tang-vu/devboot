@@ -11,6 +11,11 @@ export interface Project {
   env_vars: Record<string, string>;
 }
 
+export interface ProjectOptions {
+  autoStart: boolean;
+  restartOnCrash: boolean;
+}
+
 export interface Settings {
   auto_start_with_windows: boolean;
   theme: string;

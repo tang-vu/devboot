@@ -1,13 +1,13 @@
 import { useState, DragEvent, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Project, CommandSuggestion, DetectedProjectInfo } from '../types';
+import { Project, ProjectOptions, CommandSuggestion, DetectedProjectInfo } from '../types';
 import { projectTemplates } from '../data/templates';
 import './AddProject.css';
 
 interface AddProjectProps {
     project?: Project | null;
-    onSave: (name: string, path: string, commands: string[], envVars?: Record<string, string>) => void;
+    onSave: (name: string, path: string, commands: string[], options: ProjectOptions, envVars?: Record<string, string>) => void;
     onClose: () => void;
 }
 
@@ -188,7 +188,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
             }
         });
 
-        onSave(name, path, commandList, envVarsObj);
+        onSave(name, path, commandList, { autoStart, restartOnCrash }, envVarsObj);
     };
 
     return (

@@ -54,8 +54,17 @@ pub fn add_project(
     name: String,
     path: String,
     commands: Vec<String>,
+    auto_start: Option<bool>,
+    restart_on_crash: Option<bool>,
 ) -> Result<Project, String> {
-    let project = Project::new(name, path, commands);
+    let mut project = Project::new(name, path, commands);
+    // Keep the existing defaults for older callers that omit these options.
+    if let Some(auto_start) = auto_start {
+        project.auto_start = auto_start;
+    }
+    if let Some(restart_on_crash) = restart_on_crash {
+        project.restart_on_crash = restart_on_crash;
+    }
     let mut config = state.config.lock().unwrap();
     config.projects.push(project.clone());
     config::save_config(&config)?;
