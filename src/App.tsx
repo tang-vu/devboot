@@ -7,7 +7,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { ToastProvider, useToast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useProjects, useSettings } from './hooks/useProjects';
-import { Project } from './types';
+import { Project, ProjectOptions } from './types';
 import './App.css';
 
 function AppContent() {
@@ -104,10 +104,10 @@ function AppContent() {
   }, [selectedProject, statuses]);
 
   // Handlers with toast notifications
-  const handleAddProject = async (name: string, path: string, commands: string[], _envVars?: Record<string, string>) => {
+  const handleAddProject = async (name: string, path: string, commands: string[], options: ProjectOptions, _envVars?: Record<string, string>) => {
     try {
       // Note: envVars will be saved when updating the project after creation
-      await addProject(name, path, commands);
+      await addProject(name, path, commands, options);
       toast.success(`Project "${name}" added successfully`);
       setShowAddProject(false);
     } catch (error) {
@@ -115,7 +115,7 @@ function AppContent() {
     }
   };
 
-  const handleUpdateProject = async (name: string, path: string, commands: string[], envVars?: Record<string, string>) => {
+  const handleUpdateProject = async (name: string, path: string, commands: string[], options: ProjectOptions, envVars?: Record<string, string>) => {
     if (!editingProject) return;
     try {
       await updateProject({
@@ -123,6 +123,8 @@ function AppContent() {
         name,
         path,
         commands,
+        auto_start: options.autoStart,
+        restart_on_crash: options.restartOnCrash,
         env_vars: envVars || editingProject.env_vars,
       });
       toast.success(`Project "${name}" updated successfully`);

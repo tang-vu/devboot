@@ -30,3 +30,7 @@ tauri-plugin-dialog = "2.5.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+tempfile = "3"

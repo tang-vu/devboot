@@ -72,3 +72,19 @@ By contributing, you agree that your contributions will be licensed under the MI
 ---
 
 Thank you for helping make DevBoot better! ❤️
+
+## Validation
+
+```bash
+npm ci
+npm test
+npm run build
+cd src-tauri
+cargo test --locked --all-targets
+```
+
+The frontend tests render the real form, App, and project hook with a synthetic
+Tauri bridge. Rust tests use Tauri's mock runtime and test-owned temporary config
+files to check IPC defaults and saved values. They do not launch project commands
+or change Windows startup settings. CI runs these checks on Windows; the tests do
+not replace manual Windows GUI acceptance testing.

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { Project, Settings, ProcessStatus } from '../types';
+import { Project, ProjectOptions, Settings, ProcessStatus } from '../types';
 
 // Event payload types
 interface LogPayload {
@@ -90,8 +90,8 @@ export function useProjects() {
     }, [loadProjects]);
 
     // Add new project
-    const addProject = async (name: string, path: string, commands: string[]) => {
-        const project = await invoke<Project>('add_project', { name, path, commands });
+    const addProject = async (name: string, path: string, commands: string[], options: ProjectOptions) => {
+        const project = await invoke<Project>('add_project', { name, path, commands, ...options });
         setProjects(prev => [...prev, project]);
         setStatuses(prev => ({ ...prev, [project.id]: 'stopped' }));
         setLogs(prev => ({ ...prev, [project.id]: [] }));

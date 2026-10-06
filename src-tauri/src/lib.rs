@@ -7,6 +7,9 @@ mod detector;
 mod process_manager;
 mod startup;
 
+#[cfg(test)]
+mod project_options_tests;
+
 use commands::AppState;
 use tauri::Manager;
 
