@@ -27,5 +27,4 @@ jobs:
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal
       - name: Compile Tauri and test project persistence
-        working-directory: src-tauri
-        run: cargo +stable test --locked --all-targets
+        run: ./scripts/test-rust-windows.ps1
