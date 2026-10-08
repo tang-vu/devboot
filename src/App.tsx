@@ -16,6 +16,8 @@ function AppContent() {
     loading,
     statuses,
     logs,
+    logErrors,
+    refreshProjects,
     addProject,
     updateProject,
     deleteProject,
@@ -221,6 +223,8 @@ function AppContent() {
             projectId={selectedProject.id}
             projectName={selectedProject.name}
             logs={logs[selectedProject.id] || []}
+            logError={logErrors[selectedProject.id]}
+            onReloadLogs={() => { void refreshProjects(); }}
             onClear={() => {
               clearLogs(selectedProject.id);
               toast.info('Logs cleared');

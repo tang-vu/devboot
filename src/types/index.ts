@@ -37,6 +37,28 @@ export interface LogPayload {
   log: string;
 }
 
+// Versioned log protocol. Decimal strings preserve the backend's full u64 range.
+export interface LogRecord {
+  seq: string;
+  log: string;
+}
+
+export type LogCaptureError = 'sequence_exhausted';
+
+export interface LogSnapshot {
+  session_id: string;
+  project_id: string;
+  through_seq: string;
+  discarded_through: string;
+  records: LogRecord[];
+  capture_error: LogCaptureError | null;
+}
+
+export type LogEvent =
+  | { kind: 'append'; session_id: string; project_id: string; record: LogRecord; discarded_through: string }
+  | { kind: 'clear'; snapshot: LogSnapshot }
+  | { kind: 'error'; session_id: string; project_id: string; error: LogCaptureError };
+
 export interface StatusPayload {
   project_id: string;
   status: ProcessStatus;

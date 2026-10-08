@@ -6,6 +6,8 @@ interface TerminalProps {
     projectId: string;
     projectName: string;
     logs: string[];
+    logError?: string | null;
+    onReloadLogs?: () => void;
     onClear: () => void;
     onRestart: () => void;
     onStop: () => void;
@@ -17,6 +19,8 @@ export function Terminal({
     projectId,
     projectName,
     logs,
+    logError,
+    onReloadLogs,
     onClear,
     onRestart,
     onStop,
@@ -181,6 +185,10 @@ export function Terminal({
             </div>
 
             <div className="terminal-body">
+                {logError && <div role="alert" className="log-error">
+                    <p>{logError}</p>
+                    {onReloadLogs && <button className="term-btn" onClick={onReloadLogs}>Reload logs</button>}
+                </div>}
                 {logs.length === 0 ? (
                     <div className="terminal-empty">
                         <span className="empty-icon">📭</span>

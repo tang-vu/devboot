@@ -2,6 +2,7 @@
 //! These commands are called from the frontend
 
 use crate::config::{self, AppConfig, Project, Settings};
+use crate::log_buffer::LogSnapshot;
 use crate::process_manager::{ProcessManager, ProcessStatus};
 use crate::startup;
 use std::collections::HashMap;
@@ -156,6 +157,16 @@ pub fn get_project_logs(state: State<AppState>, project_id: String) -> Vec<Strin
 #[tauri::command]
 pub fn clear_project_logs(state: State<AppState>, project_id: String) {
     state.process_manager.clear_logs(&project_id);
+}
+
+#[tauri::command]
+pub fn get_project_log_snapshot(state: State<AppState>, project_id: String) -> LogSnapshot {
+    state.process_manager.get_log_snapshot(&project_id)
+}
+
+#[tauri::command]
+pub fn clear_project_log_snapshot(state: State<AppState>, project_id: String) -> LogSnapshot {
+    state.process_manager.clear_log_snapshot(&project_id)
 }
 
 #[tauri::command]

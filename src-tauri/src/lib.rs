@@ -4,6 +4,7 @@
 mod commands;
 mod config;
 mod detector;
+mod log_buffer;
 mod process_manager;
 mod startup;
 
@@ -59,6 +60,8 @@ pub fn run() {
             commands::get_project_status,
             commands::get_project_logs,
             commands::clear_project_logs,
+            commands::get_project_log_snapshot,
+            commands::clear_project_log_snapshot,
             commands::send_project_input,
             commands::send_project_interrupt,
             commands::stop_all_projects,
