@@ -8,13 +8,13 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use crate::config::{validate_env_vars, Project};
+use crate::log_buffer::{LogBuffer, LogEvent, LogSnapshot};
 
 #[cfg(test)]
 #[path = "process_environment_tests.rs"]
 mod environment_tests;
 
 /// Constants
-const MAX_LOG_LINES: usize = 1000;
 const MAX_RESTART_ATTEMPTS: u32 = 5;
 const RESTART_DELAY_MS: u64 = 2000;
 
@@ -54,7 +54,7 @@ pub struct ProcessInfo {
     pub project_id: String,
     pub child: Option<Child>,
     pub status: ProcessStatus,
-    pub logs: Vec<String>,
+    logs: LogBuffer,
     pub restart_count: u32,
     pub restart_on_crash: bool,
     pub path: String,
@@ -70,7 +70,7 @@ impl ProcessInfo {
             project_id,
             child: None,
             status: ProcessStatus::Stopped,
-            logs: Vec::new(),
+            logs: LogBuffer::default(),
             restart_count: 0,
             restart_on_crash,
             path,
@@ -80,17 +80,16 @@ impl ProcessInfo {
         }
     }
 
-    pub fn add_log(&mut self, line: String) {
-        // Keep only last MAX_LOG_LINES lines
-        if self.logs.len() >= MAX_LOG_LINES {
-            self.logs.remove(0);
-        }
-        self.logs.push(line);
+    // All callers hold the process-map lock, so storage and event identity
+    // share the same ordering as snapshots and clears.
+    fn add_log(&mut self, line: String, session_id: &str) -> Option<LogEvent> {
+        self.logs.append_event(session_id, &self.project_id, line)
     }
 }
 
 /// Process manager to handle all running processes
 pub struct ProcessManager {
+    session_id: String,
     processes: Arc<Mutex<HashMap<String, ProcessInfo>>>,
     stdin_handles: Arc<Mutex<HashMap<String, ChildStdin>>>,
     git_bash_path: String,
@@ -102,6 +101,7 @@ impl ProcessManager {
         let git_bash_path = Self::find_git_bash();
         
         Self {
+            session_id: uuid::Uuid::new_v4().to_string(),
             processes: Arc::new(Mutex::new(HashMap::new())),
             stdin_handles: Arc::new(Mutex::new(HashMap::new())),
             git_bash_path,
@@ -119,6 +119,20 @@ impl ProcessManager {
     fn emit_event<S: Serialize + Clone>(&self, event: &str, payload: S) {
         if let Some(handle) = self.app_handle.lock().unwrap().as_ref() {
             let _ = handle.emit(event, payload);
+        }
+    }
+
+    // Call only after releasing the process-map lock. Clone the handle so the
+    // new log stream also avoids holding the handle mutex during event delivery.
+    fn emit_log_events(
+        app_handle: &Mutex<Option<AppHandle>>,
+        events: impl IntoIterator<Item = LogEvent>,
+    ) {
+        let handle = app_handle.lock().unwrap().clone();
+        if let Some(handle) = handle {
+            for event in events {
+                let _ = handle.emit("process-log-v2", event);
+            }
         }
     }
 
@@ -200,11 +214,13 @@ impl ProcessManager {
 
         let processes = Arc::clone(&self.processes);
         let app_handle = Arc::clone(&self.app_handle);
+        let session_id = self.session_id.clone();
 
         // Spawn thread to read stdout
         if let Some(stdout) = stdout {
             let processes = Arc::clone(&processes);
             let app_handle = Arc::clone(&app_handle);
+            let session_id = session_id.clone();
             let pid = pid.clone();
             
             thread::spawn(move || {
@@ -215,12 +231,13 @@ impl ProcessManager {
                         let log_line = format!("[{}] {}", timestamp, line);
                         
                         // Add to logs
-                        {
+                        let log_event = {
                             let mut procs = processes.lock().unwrap();
-                            if let Some(info) = procs.get_mut(&pid) {
-                                info.add_log(log_line.clone());
-                            }
-                        }
+                            procs.get_mut(&pid).and_then(|info| {
+                                info.add_log(log_line.clone(), &session_id)
+                            })
+                        };
+                        Self::emit_log_events(&app_handle, log_event);
 
                         // Emit log event
                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
@@ -238,6 +255,7 @@ impl ProcessManager {
         if let Some(stderr) = stderr {
             let processes = Arc::clone(&processes);
             let app_handle = Arc::clone(&app_handle);
+            let session_id = session_id.clone();
             let pid = pid.clone();
             
             thread::spawn(move || {
@@ -248,12 +266,13 @@ impl ProcessManager {
                         // Don't prefix with [ERR] - many tools use stderr for normal output
                         let log_line = format!("[{}] {}", timestamp, line);
                         
-                        {
+                        let log_event = {
                             let mut procs = processes.lock().unwrap();
-                            if let Some(info) = procs.get_mut(&pid) {
-                                info.add_log(log_line.clone());
-                            }
-                        }
+                            procs.get_mut(&pid).and_then(|info| {
+                                info.add_log(log_line.clone(), &session_id)
+                            })
+                        };
+                        Self::emit_log_events(&app_handle, log_event);
 
                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
                             let _ = handle.emit("process-log", LogPayload {
@@ -270,6 +289,7 @@ impl ProcessManager {
         let processes_monitor = Arc::clone(&self.processes);
         let stdin_handles_monitor = Arc::clone(&self.stdin_handles);
         let app_handle_monitor = Arc::clone(&self.app_handle);
+        let session_id_monitor = self.session_id.clone();
         let git_bash_path = self.git_bash_path.clone();
         let pid_monitor = pid.clone();
 
@@ -278,6 +298,7 @@ impl ProcessManager {
                 processes_monitor,
                 stdin_handles_monitor,
                 app_handle_monitor,
+                session_id_monitor,
                 git_bash_path,
                 pid_monitor,
                 launch_token,
@@ -292,6 +313,7 @@ impl ProcessManager {
         processes: Arc<Mutex<HashMap<String, ProcessInfo>>>,
         stdin_handles: Arc<Mutex<HashMap<String, ChildStdin>>>,
         app_handle: Arc<Mutex<Option<AppHandle>>>,
+        session_id: String,
         git_bash_path: String,
         project_id: String,
         launch_token: Arc<()>,
@@ -304,6 +326,7 @@ impl ProcessManager {
             let path;
             let commands;
             let env_vars;
+            let mut log_events = Vec::new();
 
             {
                 let mut procs = processes.lock().unwrap();
@@ -326,7 +349,10 @@ impl ProcessManager {
                             
                             if exit_code == 0 {
                                 // Normal exit
-                                info.add_log(format!("[{}] Process exited normally", timestamp));
+                                log_events.extend(info.add_log(
+                                    format!("[{}] Process exited normally", timestamp),
+                                    &session_id,
+                                ));
                                 info.status = ProcessStatus::Stopped;
                                 
                                 // Emit status
@@ -336,10 +362,18 @@ impl ProcessManager {
                                         status: "stopped".to_string(),
                                     });
                                 }
+                                drop(procs);
+                                Self::emit_log_events(&app_handle, log_events);
                                 return;
                             } else {
                                 // Crashed
-                                info.add_log(format!("[{}] [ERR] Process crashed with exit code: {}", timestamp, exit_code));
+                                log_events.extend(info.add_log(
+                                    format!(
+                                        "[{}] [ERR] Process crashed with exit code: {}",
+                                        timestamp, exit_code,
+                                    ),
+                                    &session_id,
+                                ));
                                 
                                 should_restart = info.restart_on_crash && info.restart_count < MAX_RESTART_ATTEMPTS;
                                 restart_count = info.restart_count + 1;
@@ -358,7 +392,13 @@ impl ProcessManager {
 
                                 if should_restart {
                                     info.status = ProcessStatus::Restarting;
-                                    info.add_log(format!("[{}] Restarting... (attempt {}/{})", timestamp, restart_count, MAX_RESTART_ATTEMPTS));
+                                    log_events.extend(info.add_log(
+                                        format!(
+                                            "[{}] Restarting... (attempt {}/{})",
+                                            timestamp, restart_count, MAX_RESTART_ATTEMPTS,
+                                        ),
+                                        &session_id,
+                                    ));
                                     
                                     if let Some(handle) = app_handle.lock().unwrap().as_ref() {
                                         let _ = handle.emit("process-status", StatusPayload {
@@ -369,7 +409,13 @@ impl ProcessManager {
                                 } else {
                                     info.status = ProcessStatus::Error;
                                     if info.restart_count >= MAX_RESTART_ATTEMPTS {
-                                        info.add_log(format!("[{}] [ERR] Max restart attempts reached. Giving up.", timestamp));
+                                        log_events.extend(info.add_log(
+                                            format!(
+                                                "[{}] [ERR] Max restart attempts reached. Giving up.",
+                                                timestamp,
+                                            ),
+                                            &session_id,
+                                        ));
                                     }
                                     
                                     if let Some(handle) = app_handle.lock().unwrap().as_ref() {
@@ -378,6 +424,8 @@ impl ProcessManager {
                                             status: "error".to_string(),
                                         });
                                     }
+                                    drop(procs);
+                                    Self::emit_log_events(&app_handle, log_events);
                                     return;
                                 }
                             }
@@ -387,8 +435,13 @@ impl ProcessManager {
                             continue;
                         }
                         Err(e) => {
-                            info.add_log(format!("[ERR] Failed to check process status: {}", e));
+                            log_events.extend(info.add_log(
+                                format!("[ERR] Failed to check process status: {}", e),
+                                &session_id,
+                            ));
                             info.status = ProcessStatus::Error;
+                            drop(procs);
+                            Self::emit_log_events(&app_handle, log_events);
                             return;
                         }
                     }
@@ -396,6 +449,7 @@ impl ProcessManager {
                     return; // No child process
                 }
             }
+            Self::emit_log_events(&app_handle, log_events);
 
             // Wait outside the lock, then verify this launch still owns the restart.
             if should_restart {
@@ -416,17 +470,19 @@ impl ProcessManager {
                         let stdout = child.stdout.take();
                         let stderr = child.stderr.take();
 
-                        {
-                            if let Some(info) = procs.get_mut(&project_id) {
-                                info.child = Some(child);
-                                info.status = ProcessStatus::Running;
-                                info.restart_count = restart_count;
-                                
-                                let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
-                                info.add_log(format!("[{}] Process restarted successfully", timestamp));
-                            }
-                        }
+                        let log_event = procs.get_mut(&project_id).and_then(|info| {
+                            info.child = Some(child);
+                            info.status = ProcessStatus::Running;
+                            info.restart_count = restart_count;
+
+                            let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+                            info.add_log(
+                                format!("[{}] Process restarted successfully", timestamp),
+                                &session_id,
+                            )
+                        });
                         drop(procs);
+                        Self::emit_log_events(&app_handle, log_event);
 
                         // Store stdin without holding the process lock.
                         if let Some(stdin_handle) = stdin {
@@ -445,6 +501,7 @@ impl ProcessManager {
                         if let Some(stdout) = stdout {
                             let processes = Arc::clone(&processes);
                             let app_handle = Arc::clone(&app_handle);
+                            let session_id = session_id.clone();
                             let pid = project_id.clone();
                             
                             thread::spawn(move || {
@@ -454,12 +511,13 @@ impl ProcessManager {
                                         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
                                         let log_line = format!("[{}] {}", timestamp, line);
                                         
-                                        {
+                                        let log_event = {
                                             let mut procs = processes.lock().unwrap();
-                                            if let Some(info) = procs.get_mut(&pid) {
-                                                info.add_log(log_line.clone());
-                                            }
-                                        }
+                                            procs.get_mut(&pid).and_then(|info| {
+                                                info.add_log(log_line.clone(), &session_id)
+                                            })
+                                        };
+                                        Self::emit_log_events(&app_handle, log_event);
 
                                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
                                             let _ = handle.emit("process-log", LogPayload {
@@ -475,6 +533,7 @@ impl ProcessManager {
                         if let Some(stderr) = stderr {
                             let processes = Arc::clone(&processes);
                             let app_handle = Arc::clone(&app_handle);
+                            let session_id = session_id.clone();
                             let pid = project_id.clone();
                             
                             thread::spawn(move || {
@@ -484,12 +543,13 @@ impl ProcessManager {
                                         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
                                         let log_line = format!("[{}] [ERR] {}", timestamp, line);
                                         
-                                        {
+                                        let log_event = {
                                             let mut procs = processes.lock().unwrap();
-                                            if let Some(info) = procs.get_mut(&pid) {
-                                                info.add_log(log_line.clone());
-                                            }
-                                        }
+                                            procs.get_mut(&pid).and_then(|info| {
+                                                info.add_log(log_line.clone(), &session_id)
+                                            })
+                                        };
+                                        Self::emit_log_events(&app_handle, log_event);
 
                                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
                                             let _ = handle.emit("process-log", LogPayload {
@@ -505,12 +565,16 @@ impl ProcessManager {
                         // Continue monitoring
                     }
                     Err(e) => {
-                        if let Some(info) = procs.get_mut(&project_id) {
+                        let log_event = procs.get_mut(&project_id).and_then(|info| {
                             info.status = ProcessStatus::Error;
                             let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
-                            info.add_log(format!("[{}] [ERR] Failed to restart: {}", timestamp, e));
-                        }
+                            info.add_log(
+                                format!("[{}] [ERR] Failed to restart: {}", timestamp, e),
+                                &session_id,
+                            )
+                        });
                         drop(procs);
+                        Self::emit_log_events(&app_handle, log_event);
                         
                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
                             let _ = handle.emit("process-status", StatusPayload {
@@ -580,16 +644,41 @@ impl ProcessManager {
         let procs = self.processes.lock().unwrap();
         procs
             .get(project_id)
-            .map(|info| info.logs.clone())
+            .map(|info| info.logs.legacy_logs())
             .unwrap_or_default()
     }
 
-    /// Clear logs for a project
-    pub fn clear_logs(&self, project_id: &str) {
-        let mut procs = self.processes.lock().unwrap();
-        if let Some(info) = procs.get_mut(project_id) {
-            info.logs.clear();
+    /// Read the complete retained log view at one process-map lock boundary.
+    pub fn get_log_snapshot(&self, project_id: &str) -> LogSnapshot {
+        let procs = self.processes.lock().unwrap();
+        match procs.get(project_id) {
+            Some(info) => info.logs.snapshot(&self.session_id, project_id),
+            None => LogBuffer::default().snapshot(&self.session_id, project_id),
         }
+    }
+
+    /// Clear and capture the boundary atomically. Readers may append after the
+    /// lock is released; their sequence numbers remain above this boundary.
+    pub fn clear_log_snapshot(&self, project_id: &str) -> LogSnapshot {
+        let snapshot = {
+            let mut procs = self.processes.lock().unwrap();
+            match procs.get_mut(project_id) {
+                Some(info) => info.logs.clear(&self.session_id, project_id),
+                None => LogBuffer::default().snapshot(&self.session_id, project_id),
+            }
+        };
+        Self::emit_log_events(
+            &self.app_handle,
+            Some(LogEvent::Clear {
+                snapshot: snapshot.clone(),
+            }),
+        );
+        snapshot
+    }
+
+    /// Legacy callers share the same clear boundary and v2 notification.
+    pub fn clear_logs(&self, project_id: &str) {
+        self.clear_log_snapshot(project_id);
     }
 
     /// Send input to a running process
@@ -620,12 +709,13 @@ impl ProcessManager {
             let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
             let log_line = format!("[{}] > {}", timestamp, input);
             
-            {
+            let log_event = {
                 let mut procs = self.processes.lock().unwrap();
-                if let Some(info) = procs.get_mut(project_id) {
-                    info.add_log(log_line.clone());
-                }
-            }
+                procs.get_mut(project_id).and_then(|info| {
+                    info.add_log(log_line.clone(), &self.session_id)
+                })
+            };
+            Self::emit_log_events(&self.app_handle, log_event);
 
             // Emit log event for the echoed input
             self.emit_event("process-log", LogPayload {
@@ -666,12 +756,13 @@ impl ProcessManager {
             let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
             let log_line = format!("[{}] ^C", timestamp);
             
-            {
+            let log_event = {
                 let mut procs = self.processes.lock().unwrap();
-                if let Some(info) = procs.get_mut(project_id) {
-                    info.add_log(log_line.clone());
-                }
-            }
+                procs.get_mut(project_id).and_then(|info| {
+                    info.add_log(log_line.clone(), &self.session_id)
+                })
+            };
+            Self::emit_log_events(&self.app_handle, log_event);
 
             self.emit_event("process-log", LogPayload {
                 project_id: project_id.to_string(),

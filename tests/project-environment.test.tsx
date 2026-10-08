@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../src/App';
 import type { Project } from '../src/types';
+import { logSnapshot } from './log-fixtures';
 
 const bridge = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: bridge.invoke }));
@@ -29,7 +30,7 @@ beforeEach(() => {
                 minimize_to_tray: true, show_notifications: false,
             };
             case 'get_project_status': return 'stopped';
-            case 'get_project_logs': return [];
+            case 'get_project_log_snapshot': return logSnapshot(args.projectId);
             case 'add_project': {
                 const project: Project = {
                     ...original, id: 'synthetic-added', name: args.name, path: args.path,
@@ -51,7 +52,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     expect(bridge.invoke.mock.calls.every(([command]) => [
-        'get_projects', 'get_settings', 'get_project_status', 'get_project_logs',
+        'get_projects', 'get_settings', 'get_project_status', 'get_project_log_snapshot',
         'add_project', 'update_project',
     ].includes(command))).toBe(true);
 });

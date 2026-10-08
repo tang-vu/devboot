@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../src/App';
 import type { Project } from '../src/types';
+import { logSnapshot } from './log-fixtures';
 
 const bridge = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: bridge.invoke }));
@@ -45,8 +46,8 @@ beforeEach(() => {
                 };
             case 'get_project_status':
                 return 'stopped';
-            case 'get_project_logs':
-                return [];
+            case 'get_project_log_snapshot':
+                return logSnapshot(args.projectId);
             case 'add_project': {
                 // Model the IPC response only; no native process or config file is accessed.
                 const project: Project = {
@@ -74,9 +75,10 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     // Saving project choices must never change global startup or launch a process.
     const permitted = [
-        'get_projects', 'get_settings', 'get_project_status', 'get_project_logs',
+        'get_projects', 'get_settings', 'get_project_status', 'get_project_log_snapshot',
         'add_project', 'update_project',
     ];
     expect(bridge.invoke.mock.calls.every(([command]) => permitted.includes(command))).toBe(true);
@@ -117,6 +119,28 @@ function mutations() {
 }
 
 describe('project option persistence through the form, App and useProjects', () => {
+    it.each(['pending', 'failed'])('completes a saved add when its background log snapshot is %s', async outcome => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const originalImplementation = bridge.invoke.getMockImplementation()!;
+        bridge.invoke.mockImplementation((command, args) => {
+            if (command === 'get_project_log_snapshot' && args.projectId === 'synthetic-added') {
+                return outcome === 'pending' ? new Promise(() => {}) : Promise.reject(new Error('Synthetic snapshot unavailable'));
+            }
+            return originalImplementation(command, args);
+        });
+        const user = userEvent.setup();
+        render(<App />);
+        await openAdd(user);
+        await chooseOptions(user, combinations[0]);
+        await user.click(screen.getByRole('button', { name: 'Add Project' }));
+        await waitFor(() => expect(screen.queryByRole('heading', { name: 'Add Project' })).toBeNull());
+        expect(storedProjects).toHaveLength(1);
+        expect(mutations()).toHaveLength(1);
+        await reopenEdit(user);
+        expectOptions(combinations[0]);
+        if (outcome === 'failed') expect(consoleError).toHaveBeenCalledWith('Failed to load project logs:', expect.any(Error));
+    });
+
     it.each(combinations)('adds and reloads $autoStart / $restartOnCrash', async options => {
         const user = userEvent.setup();
         const view = render(<App />);

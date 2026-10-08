@@ -4,10 +4,11 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import App from '../src/App';
 import { Terminal } from '../src/components/Terminal';
 import type { Project } from '../src/types';
+import { logSnapshot } from './log-fixtures';
 
-const bridge = vi.hoisted(() => ({ invoke: vi.fn() }));
+const bridge = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: bridge.invoke }));
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => vi.fn()) }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: bridge.listen }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
 const projects: Project[] = ['A', 'B'].map(name => ({
@@ -57,7 +58,9 @@ function select(name: 'A' | 'B') {
 beforeEach(() => {
     sends = [];
     bridge.invoke.mockReset();
-    bridge.invoke.mockImplementation((command: string) => {
+    bridge.listen.mockReset();
+    bridge.listen.mockResolvedValue(vi.fn());
+    bridge.invoke.mockImplementation((command: string, args?: { projectId: string }) => {
         switch (command) {
             case 'get_projects': return Promise.resolve(structuredClone(projects));
             case 'get_settings': return Promise.resolve({
@@ -65,7 +68,7 @@ beforeEach(() => {
                 minimize_to_tray: true, show_notifications: false,
             });
             case 'get_project_status': return Promise.resolve('running');
-            case 'get_project_logs': return Promise.resolve([]);
+            case 'get_project_log_snapshot': return Promise.resolve(logSnapshot(args!.projectId));
             case 'send_project_input': {
                 const request = deferred();
                 sends.push(request);
@@ -78,10 +81,94 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     // Every native call is stubbed; lifecycle or interrupt commands are forbidden here.
     expect(bridge.invoke.mock.calls.every(([command]) => [
-        'get_projects', 'get_settings', 'get_project_status', 'get_project_logs', 'send_project_input',
+        'get_projects', 'get_settings', 'get_project_status', 'get_project_log_snapshot', 'send_project_input',
     ].includes(command))).toBe(true);
+});
+
+describe('terminal log notices', () => {
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+    beforeEach(() => {
+        // JSDOM does not implement scrolling; the real Terminal renders retained logs here.
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+    });
+    afterEach(() => {
+        if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+        else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+    });
+
+    it.each([
+        'Log capture stopped because its sequence limit was reached. Relaunch DevBoot to resume capture.',
+        'Live log updates are unavailable. Reopen DevBoot to reconnect; refresh can reload retained history.',
+    ])('shows the log notice with retained output: %s', notice => {
+        render(<Terminal projectId="synthetic-A" projectName="Fixture A" logs={['retained output']}
+            logError={notice} onClear={vi.fn()} onStart={vi.fn()} onStop={vi.fn()}
+            onRestart={vi.fn()} isRunning />);
+        expect(screen.getByRole('alert').textContent).toBe(notice);
+        expect(screen.getByText('retained output')).toBeDefined();
+        expect(input().disabled).toBe(false);
+        expect(sendCalls()).toEqual([]);
+    });
+
+    it('routes a captured sequence exhaustion notice through App for the selected project', async () => {
+        const originalImplementation = bridge.invoke.getMockImplementation()!;
+        bridge.invoke.mockImplementation((command: string, args?: { projectId: string }) => {
+            if (command === 'get_project_log_snapshot' && args?.projectId === 'synthetic-A') {
+                return Promise.resolve(logSnapshot(args.projectId, ['last captured A line'], { capture_error: 'sequence_exhausted' }));
+            }
+            return originalImplementation(command, args);
+        });
+        await openApp();
+        expect((await screen.findByRole('alert')).textContent).toContain('sequence limit');
+        expect(screen.getByText('last captured A line')).toBeDefined();
+        select('B');
+        expect(screen.queryByRole('alert')).toBeNull();
+        select('A');
+        expect(screen.getByRole('alert').textContent).toContain('Relaunch DevBoot');
+    });
+
+    it('shows listener failure and usable snapshot history through the real App', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        bridge.listen.mockRejectedValueOnce(new Error('Synthetic log listener failure'));
+        const originalImplementation = bridge.invoke.getMockImplementation()!;
+        bridge.invoke.mockImplementation((command: string, args?: { projectId: string }) => {
+            if (command === 'get_project_log_snapshot') return Promise.resolve(logSnapshot(args!.projectId, ['fallback history']));
+            return originalImplementation(command, args);
+        });
+        await openApp();
+        expect((await screen.findByRole('alert')).textContent).toContain('Live log updates are unavailable');
+        expect(await screen.findByText('fallback history')).toBeDefined();
+        expect(input().disabled).toBe(false);
+        expect(console.error).toHaveBeenCalledWith('Failed to set up project listeners:', expect.any(Error));
+    });
+
+    it('reloads failed log history through the App notice using read-only commands', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const originalImplementation = bridge.invoke.getMockImplementation()!;
+        let attempts = 0;
+        bridge.invoke.mockImplementation((command: string, args?: { projectId: string }) => {
+            if (command === 'get_project_log_snapshot' && args?.projectId === 'synthetic-A') {
+                attempts++;
+                return attempts === 1
+                    ? Promise.reject(new Error('Synthetic log read failure'))
+                    : Promise.resolve(logSnapshot(args.projectId, ['recovered log history']));
+            }
+            return originalImplementation(command, args);
+        });
+        await openApp();
+        expect((await screen.findByRole('alert')).textContent).toContain('Log history could not be loaded');
+        expect(attempts).toBe(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Reload logs' }));
+        expect(await screen.findByText('recovered log history')).toBeDefined();
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(attempts).toBe(2);
+        expect(bridge.invoke.mock.calls.filter(([command]) => command === 'get_projects')).toHaveLength(2);
+        expect(bridge.invoke.mock.calls.every(([command]) => [
+            'get_projects', 'get_project_status', 'get_project_log_snapshot', 'get_settings',
+        ].includes(command))).toBe(true);
+    });
 });
 
 describe('terminal input request ownership', () => {
