@@ -93,6 +93,11 @@ directories to check initial start and restart; no configured user projects are
 run and no Windows startup settings are changed. CI runs these checks on Windows; the tests do
 not replace manual Windows GUI acceptance testing.
 
+Terminal input tests also render the real Terminal and App selection flow with
+deferred, synthetic IPC responses. They check project switches, closed views,
+pending edits, duplicate submissions, failure/retry, stopped states, and IME
+Enter without sending input or interrupts to any OS process.
+
 The Windows runner compiles every test target, embeds a Common Controls v6
 manifest in only the generated test executables, and runs each one. This handles
 [Tauri's Windows test-loader issue](https://github.com/tauri-apps/tauri/issues/13419)

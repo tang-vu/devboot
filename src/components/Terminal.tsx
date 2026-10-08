@@ -26,6 +26,16 @@ export function Terminal({
     const logsEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const [inputValue, setInputValue] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    const [inputError, setInputError] = useState<string | null>(null);
+    const inputRevisionRef = useRef(0);
+    const pendingInputRef = useRef<{ projectId: string; input: string; revision: number } | null>(null);
+
+    // App keys this view by project. A closed view cannot update a later view,
+    // including when the same project is selected again before its send finishes.
+    useEffect(() => () => {
+        pendingInputRef.current = null;
+    }, []);
 
     // Auto-scroll to bottom when new logs arrive
     useEffect(() => {
@@ -76,16 +86,31 @@ export function Terminal({
 
     // Handle sending input to the process
     const handleSendInput = async () => {
-        if (!inputValue.trim() || !isRunning) return;
-        
+        if (!inputValue.trim() || !isRunning || pendingInputRef.current) return;
+
+        const request = { projectId, input: inputValue, revision: inputRevisionRef.current };
+        // Lock synchronously: repeated events can arrive before React renders.
+        pendingInputRef.current = request;
+        setIsSending(true);
+        setInputError(null);
+
         try {
-            await invoke('send_project_input', { 
-                projectId, 
-                input: inputValue 
+            await invoke('send_project_input', {
+                projectId: request.projectId,
+                input: request.input,
             });
-            setInputValue('');
+            if (pendingInputRef.current === request && inputRevisionRef.current === request.revision) {
+                setInputValue('');
+            }
         } catch (error) {
-            console.error('Failed to send input:', error);
+            if (pendingInputRef.current === request) {
+                setInputError(`Failed to send input: ${error}`);
+            }
+        } finally {
+            if (pendingInputRef.current === request) {
+                pendingInputRef.current = null;
+                setIsSending(false);
+            }
         }
     };
 
@@ -111,6 +136,8 @@ export function Terminal({
         
         // Enter - Send input
         if (e.key === 'Enter' && !e.shiftKey) {
+            // IME confirmation (including the keyCode 229 fallback) is not a send.
+            if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || e.repeat) return;
             e.preventDefault();
             handleSendInput();
         }
@@ -179,8 +206,13 @@ export function Terminal({
                     ref={inputRef}
                     type="text"
                     className="terminal-input"
+                    aria-label="Terminal input"
+                    aria-describedby={inputError ? 'terminal-input-error' : undefined}
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
+                    onChange={(e) => {
+                        inputRevisionRef.current += 1;
+                        setInputValue(e.target.value);
+                    }}
                     onKeyDown={handleInputKeyDown}
                     placeholder={isRunning ? "Type command and press Enter..." : "Start the process to send input"}
                     disabled={!isRunning}
@@ -188,12 +220,17 @@ export function Terminal({
                 <button 
                     className="input-send-btn"
                     onClick={handleSendInput}
-                    disabled={!isRunning || !inputValue.trim()}
+                    disabled={!isRunning || !inputValue.trim() || isSending}
                     title="Send (Enter)"
                 >
-                    Send
+                    {isSending ? 'Sending...' : 'Send'}
                 </button>
             </div>
+            {inputError && (
+                <div id="terminal-input-error" className="terminal-input-error" role="alert">
+                    {inputError} Your text has been kept; try again when ready.
+                </div>
+            )}
 
             <div className="terminal-footer">
                 <span className="log-count">{logs.length} lines</span>

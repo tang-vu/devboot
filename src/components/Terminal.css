@@ -239,6 +239,14 @@
     font-size: 0.9rem;
 }
 
+.terminal-input-error {
+    padding: 8px 16px;
+    color: #f87171;
+    background: rgba(0, 0, 0, 0.3);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
 .terminal-input {
     flex: 1;
     background: rgba(255, 255, 255, 0.05);
