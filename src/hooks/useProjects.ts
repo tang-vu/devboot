@@ -25,68 +25,107 @@ export function useProjects() {
     const [loading, setLoading] = useState(true);
     const [statuses, setStatuses] = useState<Record<string, ProcessStatus>>({});
     const [logs, setLogs] = useState<Record<string, string[]>>({});
-    const unlistenRefs = useRef<UnlistenFn[]>([]);
+    const readLifetimeRef = useRef<object | null>(null);
+    const refreshRevisionRef = useRef(0);
+    const statusRevisionsRef = useRef(new Map<string, number>());
 
     // Load projects from backend
     const loadProjects = useCallback(async () => {
+        const lifetime = readLifetimeRef.current;
+        if (!lifetime) return;
+        const revision = ++refreshRevisionRef.current;
+        const isCurrent = () => readLifetimeRef.current === lifetime && refreshRevisionRef.current === revision;
+
         try {
             const data = await invoke<Project[]>('get_projects');
+            if (!isCurrent()) return;
             setProjects(data);
             
             // Initialize statuses for each project
             for (const project of data) {
+                const statusRevision = statusRevisionsRef.current.get(project.id) || 0;
                 const status = await invoke<string>('get_project_status', { projectId: project.id });
-                setStatuses(prev => ({ ...prev, [project.id]: status as ProcessStatus }));
+                if (!isCurrent()) return;
+                // Only events observed during this read invalidate its status.
+                if ((statusRevisionsRef.current.get(project.id) || 0) === statusRevision) {
+                    setStatuses(prev => ({ ...prev, [project.id]: status as ProcessStatus }));
+                }
                 
                 // Load existing logs
                 const projectLogs = await invoke<string[]>('get_project_logs', { projectId: project.id });
+                if (!isCurrent()) return;
                 setLogs(prev => ({ ...prev, [project.id]: projectLogs }));
             }
         } catch (error) {
-            console.error('Failed to load projects:', error);
+            if (isCurrent()) console.error('Failed to load projects:', error);
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     }, []);
 
     // Setup Tauri event listeners
     useEffect(() => {
+        let active = true;
+        const unlisteners: UnlistenFn[] = [];
+        const reportCleanupError = (error: unknown) => console.error('Failed to remove project listener:', error);
+        const dispose = (unlisten: UnlistenFn) => {
+            try {
+                // Tauri returns a promise at runtime despite the void UnlistenFn type.
+                void Promise.resolve(unlisten()).catch(reportCleanupError);
+            } catch (error) {
+                reportCleanupError(error);
+            }
+        };
+        const cleanup = () => {
+            active = false;
+            unlisteners.splice(0).forEach(dispose);
+        };
+        const register = async <T,>(name: string, handler: (payload: T) => void) => {
+            const unlisten = await listen<T>(name, event => {
+                if (active) handler(event.payload);
+            });
+            if (active) unlisteners.push(unlisten);
+            else dispose(unlisten);
+        };
+
         const setupListeners = async () => {
-            // Listen for log events
-            const unlistenLog = await listen<LogPayload>('process-log', (event) => {
-                const { project_id, log } = event.payload;
-                setLogs(prev => ({
-                    ...prev,
-                    [project_id]: [...(prev[project_id] || []), log].slice(-1000), // Keep last 1000 logs
-                }));
-            });
+            try {
+                await register<LogPayload>('process-log', ({ project_id, log }) => {
+                    setLogs(prev => ({
+                        ...prev,
+                        [project_id]: [...(prev[project_id] || []), log].slice(-1000), // Keep last 1000 logs
+                    }));
+                });
+                if (!active) return;
 
-            // Listen for status events
-            const unlistenStatus = await listen<StatusPayload>('process-status', (event) => {
-                const { project_id, status } = event.payload;
-                setStatuses(prev => ({ ...prev, [project_id]: status }));
-            });
+                await register<StatusPayload>('process-status', ({ project_id, status }) => {
+                    statusRevisionsRef.current.set(project_id, (statusRevisionsRef.current.get(project_id) || 0) + 1);
+                    setStatuses(prev => ({ ...prev, [project_id]: status }));
+                });
+                if (!active) return;
 
-            // Listen for crash events
-            const unlistenCrash = await listen<CrashPayload>('process-crash', (event) => {
-                const { project_id, restart_count, will_restart } = event.payload;
-                console.log(`Process ${project_id} crashed. Restart count: ${restart_count}, Will restart: ${will_restart}`);
-            });
-
-            unlistenRefs.current = [unlistenLog, unlistenStatus, unlistenCrash];
+                await register<CrashPayload>('process-crash', ({ project_id, restart_count, will_restart }) => {
+                    console.log(`Process ${project_id} crashed. Restart count: ${restart_count}, Will restart: ${will_restart}`);
+                });
+            } catch (error) {
+                const reportError = active;
+                cleanup();
+                if (reportError) console.error('Failed to set up project listeners:', error);
+            }
         };
 
-        setupListeners();
-
-        // Cleanup listeners on unmount
-        return () => {
-            unlistenRefs.current.forEach(unlisten => unlisten());
-        };
+        void setupListeners();
+        return cleanup;
     }, []);
 
     // Load projects on mount
     useEffect(() => {
-        loadProjects();
+        const lifetime = {};
+        readLifetimeRef.current = lifetime;
+        void loadProjects();
+        return () => {
+            if (readLifetimeRef.current === lifetime) readLifetimeRef.current = null;
+        };
     }, [loadProjects]);
 
     // Add new project
