@@ -97,6 +97,18 @@ DevBoot stores its configuration in:
 
 3. **View Logs** - Click on a project to see its real-time output
 
+   Output follows the latest record automatically. Scroll upward or choose
+   **Pause following** to read earlier output without losing your place as new
+   records arrive. **Resume live** jumps to the latest output and follows again.
+   You can Tab to the output area and use normal scrolling keys; Pause/Resume
+   also works with Enter or Space. Pausing only changes scrolling: collection
+   continues and the latest 1,000 records remain available. If clear or retention
+   removes the record you were reading, the view stays paused, shows the earliest
+   retained output, and explains that earlier output is no longer available.
+   Switching projects or reopening the terminal starts a fresh following view.
+   Logs are kept in memory until DevBoot exits; Export saves the currently
+   retained records, including records received while reading history.
+
 4. **Configure Auto-Start** - Enable in Settings to start DevBoot with Windows
 
 5. **Set Project Environment** - Use the Environment tab when adding or editing a

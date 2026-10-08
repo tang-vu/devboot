@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import type { LogRecord } from '../types';
+import { useLogFollowing } from '../hooks/useLogFollowing';
 import './Terminal.css';
 
 interface TerminalProps {
     projectId: string;
     projectName: string;
-    logs: string[];
+    records: LogRecord[];
+    sessionId: string | null;
     logError?: string | null;
     onReloadLogs?: () => void;
     onClear: () => void;
@@ -18,7 +21,8 @@ interface TerminalProps {
 export function Terminal({
     projectId,
     projectName,
-    logs,
+    records,
+    sessionId,
     logError,
     onReloadLogs,
     onClear,
@@ -27,7 +31,8 @@ export function Terminal({
     onStart,
     isRunning,
 }: TerminalProps) {
-    const logsEndRef = useRef<HTMLDivElement>(null);
+    const logs = records.map(record => record.log);
+    const { bodyRef, contentRef, following, historyUnavailable, pause, resume, onScroll } = useLogFollowing(records, sessionId);
     const inputRef = useRef<HTMLInputElement>(null);
     const [inputValue, setInputValue] = useState('');
     const [isSending, setIsSending] = useState(false);
@@ -40,11 +45,6 @@ export function Terminal({
     useEffect(() => () => {
         pendingInputRef.current = null;
     }, []);
-
-    // Auto-scroll to bottom when new logs arrive
-    useEffect(() => {
-        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [logs]);
 
     const formatLog = (log: string) => {
         // Highlight errors in red
@@ -184,7 +184,22 @@ export function Terminal({
                 </div>
             </div>
 
-            <div className="terminal-body">
+            <div className="terminal-follow-controls">
+                <span role="status">{following ? 'Following output' : 'Reading history'}</span>
+                <button type="button" className="term-btn follow" onClick={following ? pause : resume}>
+                    {following ? 'Pause following' : 'Resume live'}
+                </button>
+                {historyUnavailable && <span className="history-notice" role="status">
+                    Earlier output is no longer available. {records.length ? 'Showing retained history.' : 'No logs are retained.'}
+                </span>}
+            </div>
+            <div className="terminal-body" ref={bodyRef} role="region" aria-label={`${projectName} output`}
+                tabIndex={0} onScroll={onScroll}
+                onWheel={event => { if (event.deltaY < 0) pause(); }}
+                onKeyDown={event => {
+                    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) pause();
+                }}>
+                <div className="terminal-content" ref={contentRef}>
                 {logError && <div role="alert" className="log-error">
                     <p>{logError}</p>
                     {onReloadLogs && <button className="term-btn" onClick={onReloadLogs}>Reload logs</button>}
@@ -197,14 +212,14 @@ export function Terminal({
                     </div>
                 ) : (
                     <div className="log-container">
-                        {logs.map((log, index) => (
-                            <div key={index} className="log-line">
-                                {formatLog(log)}
+                        {records.map(record => (
+                            <div key={`${sessionId}:${record.seq}`} data-log-id={`${sessionId}:${record.seq}`} className="log-line">
+                                {formatLog(record.log)}
                             </div>
                         ))}
-                        <div ref={logsEndRef} />
                     </div>
                 )}
+                </div>
             </div>
 
             {/* Terminal Input */}

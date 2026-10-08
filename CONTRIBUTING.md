@@ -98,6 +98,13 @@ deferred, synthetic IPC responses. They check project switches, closed views,
 pending edits, duplicate submissions, failure/retry, stopped states, and IME
 Enter without sending input or interrupts to any OS process.
 
+Terminal-following component tests cover keyboard controls, paused state during
+updates and clear boundaries, repeated text, and project/view lifetimes. JSDOM
+does not perform layout or native scrolling; these tests do not establish
+viewport anchoring. See [the synthetic browser fixture](tests/browser/README.md)
+for real-browser checks of scrolling, wrapping, resizing, and retention without
+launching any configured project or invoking Tauri commands.
+
 Project-state tests render the real hook with deferred synthetic reads and event
 registrations. They cover StrictMode replay, cleanup and registration failure,
 superseded refreshes, and per-project status events arriving during reads. Log

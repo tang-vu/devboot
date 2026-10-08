@@ -124,12 +124,41 @@
 
 .terminal-body {
     flex: 1;
+    min-height: 0;
     padding: 16px;
     overflow-y: auto;
+    overflow-anchor: none;
+    scroll-behavior: auto;
     font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 0.85rem;
     line-height: 1.6;
 }
+
+.terminal-body:focus-visible,
+.term-btn.follow:focus-visible {
+    outline: 2px solid #a5b4fc;
+    outline-offset: -2px;
+}
+
+.terminal-content { min-height: 100%; }
+
+.terminal-follow-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #9ca3af;
+    font-size: 0.8rem;
+}
+
+.term-btn.follow {
+    background: rgba(99, 102, 241, 0.2);
+    color: #c7d2fe;
+}
+
+.history-notice { color: #fbbf24; }
 
 .terminal-empty {
     display: flex;

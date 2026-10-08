@@ -40,7 +40,7 @@ async function settle(index: number, outcome: 'success' | 'failure' = 'success')
 }
 
 function terminal(isRunning = true) {
-    return <Terminal projectId="synthetic-A" projectName="Fixture A" logs={[]}
+    return <Terminal projectId="synthetic-A" projectName="Fixture A" records={[]} sessionId="synthetic-session"
         onClear={vi.fn()} onStart={vi.fn()} onStop={vi.fn()} onRestart={vi.fn()}
         isRunning={isRunning} />;
 }
@@ -103,7 +103,7 @@ describe('terminal log notices', () => {
         'Log capture stopped because its sequence limit was reached. Relaunch DevBoot to resume capture.',
         'Live log updates are unavailable. Reopen DevBoot to reconnect; refresh can reload retained history.',
     ])('shows the log notice with retained output: %s', notice => {
-        render(<Terminal projectId="synthetic-A" projectName="Fixture A" logs={['retained output']}
+        render(<Terminal projectId="synthetic-A" projectName="Fixture A" records={[{ seq: '1', log: 'retained output' }]} sessionId="synthetic-session"
             logError={notice} onClear={vi.fn()} onStart={vi.fn()} onStop={vi.fn()}
             onRestart={vi.fn()} isRunning />);
         expect(screen.getByRole('alert').textContent).toBe(notice);
