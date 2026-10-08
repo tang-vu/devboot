@@ -217,6 +217,7 @@ function AppContent() {
       <main className="main-content">
         {selectedProject ? (
           <Terminal
+            key={selectedProject.id}
             projectId={selectedProject.id}
             projectName={selectedProject.name}
             logs={logs[selectedProject.id] || []}

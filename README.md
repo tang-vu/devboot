@@ -109,6 +109,15 @@ DevBoot stores its configuration in:
    `=` or NUL; values cannot contain NUL. Environment values are stored in plain
    text in the project's local configuration file.
 
+6. **Send Terminal Input** - Type in the selected running project's terminal and
+   press Enter or click Send. While sending, you can edit the next draft; it is
+   preserved when the earlier send finishes. A failed send keeps the current text
+   and shows an error so you can retry. Drafts belong only to the current terminal
+   view: switching projects or closing the app discards them, including when you
+   return to the same project. Stopping and starting a project while staying in
+   its view keeps unsent text without sending it automatically. Already submitted
+   input is not cancelled by switching or closing the view.
+
 ## 🛠️ Tech Stack
 
 | Component | Technology |
