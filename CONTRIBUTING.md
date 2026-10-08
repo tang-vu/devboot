@@ -98,6 +98,15 @@ deferred, synthetic IPC responses. They check project switches, closed views,
 pending edits, duplicate submissions, failure/retry, stopped states, and IME
 Enter without sending input or interrupts to any OS process.
 
+Project-state tests render the real hook with deferred synthetic reads and event
+registrations. They cover StrictMode replay, cleanup and registration failure,
+superseded refreshes, and per-project status events arriving during reads. They
+also preserve current log snapshots and identical repeated lines. Initial reads
+remain independent of listener registration, so events before subscription can
+still be missed. Mutation/refresh races and overlap between a current log
+snapshot and live log events are outside this ownership fix; string-only log
+payloads do not support reliable deduplication or exactly-once reconciliation.
+
 The Windows runner compiles every test target, embeds a Common Controls v6
 manifest in only the generated test executables, and runs each one. This handles
 [Tauri's Windows test-loader issue](https://github.com/tauri-apps/tauri/issues/13419)
