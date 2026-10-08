@@ -99,6 +99,16 @@ DevBoot stores its configuration in:
 
 4. **Configure Auto-Start** - Enable in Settings to start DevBoot with Windows
 
+5. **Set Project Environment** - Use the Environment tab when adding or editing a
+   project. Values are saved with the project and passed unchanged to its Git Bash
+   process on manual start and auto-start. A running process keeps its launch
+   environment, including automatic crash retries. After editing values, manually
+   restart the project to apply them. Empty values are supported;
+   project values override inherited variables and DevBoot's UTF-8 defaults.
+   Names must be unique (case-insensitive on Windows), nonempty, and contain no
+   `=` or NUL; values cannot contain NUL. Environment values are stored in plain
+   text in the project's local configuration file.
+
 ## 🛠️ Tech Stack
 
 | Component | Technology |

@@ -90,8 +90,8 @@ export function useProjects() {
     }, [loadProjects]);
 
     // Add new project
-    const addProject = async (name: string, path: string, commands: string[], options: ProjectOptions) => {
-        const project = await invoke<Project>('add_project', { name, path, commands, ...options });
+    const addProject = async (name: string, path: string, commands: string[], options: ProjectOptions, envVars: Record<string, string> = {}) => {
+        const project = await invoke<Project>('add_project', { name, path, commands, ...options, envVars });
         setProjects(prev => [...prev, project]);
         setStatuses(prev => ({ ...prev, [project.id]: 'stopped' }));
         setLogs(prev => ({ ...prev, [project.id]: [] }));
