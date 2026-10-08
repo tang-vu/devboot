@@ -91,6 +91,28 @@ async function evidence(page: Page, info: TestInfo, label: string) {
     await info.attach(label, { body: await page.screenshot(), contentType: 'image/png' });
 }
 
+async function anchorEvidence(page: Page, info: TestInfo, label: string, anchor: Anchor) {
+    const measured = await region(page).evaluate((body, id) => {
+        const top = body.getBoundingClientRect().top + body.clientTop;
+        const lines = Array.from(body.querySelectorAll<HTMLElement>('[data-log-id]'));
+        const measure = (line: HTMLElement) => {
+            const bounds = line.getBoundingClientRect();
+            return { id: line.dataset.logId, offset: bounds.top - top,
+                bottom: bounds.bottom - top, height: bounds.height };
+        };
+        const original = lines.find(line => line.dataset.logId === id);
+        return {
+            scrollTop: body.scrollTop, scrollHeight: body.scrollHeight,
+            clientHeight: body.clientHeight, clientWidth: body.clientWidth,
+            original: original ? measure(original) : null,
+            visible: lines.filter(line => line.getBoundingClientRect().bottom > top).slice(0, 3).map(measure),
+        };
+    }, anchor.id);
+    await info.attach(label, {
+        body: JSON.stringify({ captured: anchor, measured }, null, 2), contentType: 'application/json',
+    });
+}
+
 test.beforeEach(async ({ page }) => {
     await page.goto('/tests/browser/log-follow.html');
     await expect(page.getByRole('heading', { name: 'DevBoot synthetic log-follow QA' })).toBeVisible();
@@ -196,10 +218,20 @@ test('keyboard and native scrollbar scrolling pause without implicit resume at t
     await control(page, 'Resume live').click();
     await expectFollowing(page);
     const metrics = await region(page).evaluate(body => {
+        if (!(body instanceof HTMLElement)) throw new Error('Expected an HTML output region');
         const box = body.getBoundingClientRect();
-        return { x: box.right - 4, bottom: box.bottom, top: box.top, viewport: body.clientHeight,
+        const style = getComputedStyle(body);
+        const borderRight = parseFloat(style.borderRightWidth);
+        const scrollbarWidth = body.offsetWidth - body.clientWidth - parseFloat(style.borderLeftWidth) - borderRight;
+        return { x: box.right - borderRight - scrollbarWidth / 2,
+            bottom: box.bottom, top: box.top, viewport: body.clientHeight,
+            scrollbarWidth, clientWidth: body.clientWidth, offsetWidth: body.offsetWidth,
             thumb: Math.max(20, body.clientHeight * body.clientHeight / body.scrollHeight) };
     });
+    await info.attach('native-scrollbar-metrics', {
+        body: JSON.stringify(metrics, null, 2), contentType: 'application/json',
+    });
+    expect(metrics.scrollbarWidth, 'Native scrollbar must be visible before testing a real thumb drag').toBeGreaterThan(0);
     await page.mouse.move(metrics.x, metrics.bottom - metrics.thumb / 2);
     await page.mouse.down();
     await page.mouse.move(metrics.x, metrics.top + metrics.viewport / 2, { steps: 12 });
@@ -287,8 +319,10 @@ test('cap eviction preserves retained anchors and honestly reports an evicted an
     await expectFollowing(page);
     const anchor = await wheelIntoHistory(page);
     const oldFirstId = await page.locator('.log-line').first().getAttribute('data-log-id');
+    await anchorEvidence(page, info, 'before-cap-retention', anchor);
     await control(page, 'Append 300').click();
     await expect(page.locator('.log-line')).toHaveCount(1000);
+    await anchorEvidence(page, info, 'after-cap-retention', anchor);
     expect(await page.locator('.log-line').first().getAttribute('data-log-id')).not.toBe(oldFirstId);
     await expectAnchor(page, anchor);
     await expect(page.locator('.history-notice')).toHaveCount(0);

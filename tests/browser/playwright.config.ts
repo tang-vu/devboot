@@ -12,6 +12,9 @@ export default defineConfig({
     outputDir: '../../test-results',
     use: {
         browserName: 'chromium',
+        // Chromium's headless default hides scrollbars, turning a supposed
+        // thumb drag into text selection. Keep the real native control visible.
+        launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
         baseURL: 'http://127.0.0.1:4179',
         viewport: { width: 1280, height: 900 },
         screenshot: 'only-on-failure',

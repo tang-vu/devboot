@@ -50,7 +50,7 @@ beforeEach(() => {
     });
 });
 afterEach(() => {
-    cleanup(); vi.restoreAllMocks();
+    cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();
     expect(bridge.invoke.mock.calls.every(([command]) => [
         'get_projects', 'get_project_status', 'get_settings', 'get_project_log_snapshot', 'clear_project_log_snapshot',
     ].includes(command))).toBe(true);
@@ -157,5 +157,83 @@ it('keeps capture and read notices independent from paused mode and reload callb
     fireEvent.click(screen.getByRole('button', { name: 'Reload logs' }));
     expect(reload).toHaveBeenCalledOnce();
     expect(screen.getByRole('alert').textContent).toContain('Log history could not be loaded.');
+    expectPaused();
+});
+
+// Model the browser event ordering and integer scrollTop observed in hosted
+// Chromium. These regressions supplement, rather than replace, real layout QA.
+function layoutFixture() {
+    let deliverResize = () => {};
+    vi.stubGlobal('ResizeObserver', class {
+        constructor(callback: () => void) { deliverResize = callback; }
+        observe() {}
+        disconnect() {}
+    });
+    const view = render(<Terminal {...props} />);
+    const body = screen.getByRole('region');
+    const layout = { height: 1000, width: 600, viewport: 200, top: 800, starts: [700, 800], rowHeight: 80 };
+    const writes = vi.fn();
+    Object.defineProperties(body, {
+        scrollHeight: { configurable: true, get: () => layout.height },
+        clientWidth: { configurable: true, get: () => layout.width },
+        clientHeight: { configurable: true, get: () => layout.viewport },
+        scrollTop: { configurable: true, get: () => layout.top, set: (value: number) => {
+            writes(value);
+            layout.top = Math.round(Math.max(0, Math.min(layout.height - layout.viewport, value)));
+        } },
+    });
+    const rect = (top: number, height: number) => ({ top, bottom: top + height, height, left: 0, right: layout.width, width: layout.width, x: 0, y: top, toJSON() {} });
+    vi.spyOn(body, 'getBoundingClientRect').mockImplementation(() => rect(0, layout.viewport));
+    body.querySelectorAll<HTMLElement>('[data-log-id]').forEach((line, index) => {
+        vi.spyOn(line, 'getBoundingClientRect').mockImplementation(() => rect(layout.starts[index] - layout.top, layout.rowHeight));
+    });
+    const resize = () => act(() => deliverResize());
+    resize(); writes.mockClear();
+    return { view, body, layout, writes, resize };
+}
+
+it.each(['observer first', 'scroll first'])('does not replay consumed resize over native PageUp (%s)', order => {
+    const fixture = layoutFixture();
+    fixture.layout.width = 700;
+    fireEvent.keyDown(fixture.body, { key: 'PageUp' });
+    expectPaused();
+    // The browser performs its default keyboard scroll after keydown.
+    fixture.layout.top = 600;
+    if (order === 'observer first') fixture.resize();
+    fireEvent.scroll(fixture.body);
+    fixture.resize();
+    expect(fixture.layout.top).toBe(600);
+    expect(fixture.writes).not.toHaveBeenCalled();
+});
+
+it('still restores retained reading position for a resize without native input', () => {
+    const fixture = layoutFixture();
+    pause();
+    fixture.layout.width = 700;
+    fixture.layout.height = 1100;
+    fixture.layout.starts = [800, 900];
+    fixture.resize();
+    expect(fixture.layout.top).toBe(900);
+    expectPaused();
+    fixture.writes.mockClear();
+    fixture.resize();
+    fixture.view.rerender(<Terminal {...props} records={[...records]} />);
+    expect(fixture.writes).not.toHaveBeenCalled();
+});
+
+it('keeps a fractionally visible retained row when Chromium rounds the restoration', () => {
+    const fixture = layoutFixture();
+    Object.assign(fixture.layout, {
+        height: 30000, viewport: 500, top: 25829, starts: [25803.5, 25829.25], rowHeight: 25.75,
+    });
+    pause();
+    fixture.layout.height = 21079;
+    fixture.layout.starts = [16882.25, 16908];
+    fixture.view.rerender(<Terminal {...props} records={[...records]} />);
+    expect(fixture.layout.top).toBe(16907);
+    const first = Array.from(fixture.body.querySelectorAll<HTMLElement>('[data-log-id]'))
+        .find(line => line.getBoundingClientRect().bottom > 0)!;
+    expect(first.dataset.logId).toBe('session-A:1');
+    expect(Math.abs(first.getBoundingClientRect().top - -25.5)).toBeLessThanOrEqual(1);
     expectPaused();
 });

@@ -20,6 +20,12 @@ export function useLogFollowing(records: LogRecord[], sessionId: string | null) 
             height: body.scrollHeight, width: body.clientWidth, viewport: body.clientHeight,
         };
     };
+    const geometryChanged = () => {
+        const body = bodyRef.current;
+        const previous = geometryRef.current;
+        return !!body && (previous.height !== body.scrollHeight || previous.width !== body.clientWidth
+            || previous.viewport !== body.clientHeight);
+    };
     const captureAnchor = () => {
         const body = bodyRef.current;
         if (!body) return;
@@ -40,7 +46,8 @@ export function useLogFollowing(records: LogRecord[], sessionId: string | null) 
         if (!body) return;
         if (followingRef.current) {
             // Instant positioning avoids overlapping animations during bursts.
-            body.scrollTop = body.scrollHeight;
+            const bottom = Math.max(0, body.scrollHeight - body.clientHeight);
+            if (body.scrollTop !== bottom) body.scrollTop = bottom;
         } else if (anchorRef.current) {
             const lines = body.querySelectorAll<HTMLElement>('[data-log-id]');
             const anchor = anchorRef.current;
@@ -52,13 +59,21 @@ export function useLogFollowing(records: LogRecord[], sessionId: string | null) 
                 // at the top. Keep that record visible instead of scrolling
                 // beyond it using an offset larger than its new height.
                 const offset = anchor.offset <= -bounds.height ? 0 : anchor.offset;
-                body.scrollTop += bounds.top - top - offset;
+                const correction = bounds.top - top - offset;
+                // Even a no-op scrollTop setter can cancel native keyboard
+                // scrolling. Leave already aligned layout alone.
+                if (Math.abs(correction) > 0.5) body.scrollTop += correction;
+                // Chromium can round away the last fraction of a pixel of an
+                // otherwise retained row. Keep that same row intersecting the
+                // viewport before choosing the next anchor.
+                const restored = line.getBoundingClientRect();
+                if (restored.height > 0 && restored.bottom <= top) body.scrollTop -= top - restored.bottom + 1;
                 captureAnchor();
             } else {
                 // Clear, retention, or session replacement removed the reader's
                 // anchor. Keep paused and make the limit visible instead of
                 // pretending the previous record is still available.
-                body.scrollTop = 0;
+                if (body.scrollTop !== 0) body.scrollTop = 0;
                 setHistoryUnavailable(true);
                 captureAnchor();
             }
@@ -74,15 +89,21 @@ export function useLogFollowing(records: LogRecord[], sessionId: string | null) 
         const body = bodyRef.current;
         const content = contentRef.current;
         if (!body || !content || typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(synchronize);
+        const observer = new ResizeObserver(() => {
+            if (geometryChanged()) synchronize();
+        });
         observer.observe(body);
         observer.observe(content);
         return () => observer.disconnect();
     }, []);
 
     const pause = () => {
-        if (!followingRef.current) return;
         captureAnchor();
+        // Wheel/PageUp may follow a resize before its observer notification.
+        // Consume that layout now so the queued notification cannot overwrite
+        // the native scroll that the reader is about to make.
+        rememberGeometry();
+        if (!followingRef.current) return;
         followingRef.current = false;
         setFollowing(false);
     };
@@ -96,9 +117,7 @@ export function useLogFollowing(records: LogRecord[], sessionId: string | null) 
     const onScroll = () => {
         const body = bodyRef.current;
         if (!body) return;
-        const geometry = geometryRef.current;
-        if (geometry.height !== body.scrollHeight || geometry.width !== body.clientWidth
-            || geometry.viewport !== body.clientHeight) {
+        if (geometryChanged()) {
             synchronize();
             return;
         }

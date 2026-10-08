@@ -35,6 +35,9 @@ page evaluation reads DOM geometry only. It writes an HTML report to
 `playwright-report` and attaches selected screenshots and geometry JSON. Failures
 also retain a trace and screenshot in `test-results`. CI must run these tests on
 the exact proposed commit before the geometry gate can be considered passed.
+The configuration omits Chromium's display-only `--hide-scrollbars` default so
+the native scrollbar test can drag an actual visible thumb. It verifies the
+measured scrollbar width before dragging and records those measurements.
 
 ## Geometry observations
 
