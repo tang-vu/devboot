@@ -57,7 +57,7 @@ beforeEach(() => {
                     auto_start: args.autoStart ?? true,
                     restart_on_crash: args.restartOnCrash ?? true,
                     enabled: true,
-                    env_vars: {},
+                    env_vars: args.envVars ?? {},
                 };
                 storedProjects.push(project);
                 return structuredClone(project);
@@ -129,6 +129,7 @@ describe('project option persistence through the form, App and useProjects', () 
             path: 'C:/synthetic/new/',
             commands: ['echo first', 'echo second'],
             ...options,
+            envVars: {},
         }]]));
         await waitFor(() => expect(screen.queryByRole('heading', { name: 'Add Project' })).toBeNull());
         await reopenEdit(user);
@@ -246,6 +247,7 @@ describe('project option persistence through the form, App and useProjects', () 
         await waitFor(() => expect(mutations()).toEqual([['add_project', {
             name: 'Keyboard fixture', path: 'C:/synthetic/keyboard/', commands: [],
             autoStart: false, restartOnCrash: false,
+            envVars: {},
         }]]));
     });
 });

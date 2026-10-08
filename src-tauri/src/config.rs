@@ -31,6 +31,27 @@ impl Project {
     }
 }
 
+/// Check values before saving or launching, without exposing their contents in errors.
+pub fn validate_env_vars(env_vars: &HashMap<String, String>) -> Result<(), String> {
+    for (key, value) in env_vars {
+        if key.is_empty() || key.contains('=') || key.contains('\0') {
+            return Err("Environment variable names cannot be empty or contain '=' or NUL".into());
+        }
+        if value.contains('\0') {
+            return Err("Environment variable values cannot contain NUL".into());
+        }
+    }
+
+    // Command uses the host's key comparison, including Windows case-insensitivity.
+    // Configure only: this never starts a child or changes the current environment.
+    let mut environment = std::process::Command::new("");
+    environment.envs(env_vars);
+    if environment.get_envs().count() != env_vars.len() {
+        return Err("Environment variable names must be unique (case-insensitive on Windows)".into());
+    }
+    Ok(())
+}
+
 /// Global app settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {

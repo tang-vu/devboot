@@ -104,14 +104,13 @@ function AppContent() {
   }, [selectedProject, statuses]);
 
   // Handlers with toast notifications
-  const handleAddProject = async (name: string, path: string, commands: string[], options: ProjectOptions, _envVars?: Record<string, string>) => {
+  const handleAddProject = async (name: string, path: string, commands: string[], options: ProjectOptions, envVars?: Record<string, string>) => {
     try {
-      // Note: envVars will be saved when updating the project after creation
-      await addProject(name, path, commands, options);
+      await addProject(name, path, commands, options, envVars);
       toast.success(`Project "${name}" added successfully`);
-      setShowAddProject(false);
     } catch (error) {
       toast.error(`Failed to add project: ${error}`);
+      throw error;
     }
   };
 
@@ -128,9 +127,9 @@ function AppContent() {
         env_vars: envVars || editingProject.env_vars,
       });
       toast.success(`Project "${name}" updated successfully`);
-      setEditingProject(null);
     } catch (error) {
       toast.error(`Failed to update project: ${error}`);
+      throw error;
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, DragEvent, useEffect } from 'react';
+import { useState, DragEvent, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Project, ProjectOptions, CommandSuggestion, DetectedProjectInfo } from '../types';
@@ -7,7 +7,7 @@ import './AddProject.css';
 
 interface AddProjectProps {
     project?: Project | null;
-    onSave: (name: string, path: string, commands: string[], options: ProjectOptions, envVars?: Record<string, string>) => void;
+    onSave: (name: string, path: string, commands: string[], options: ProjectOptions, envVars?: Record<string, string>) => void | Promise<void>;
     onClose: () => void;
 }
 
@@ -20,6 +20,15 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     const [isDragOver, setIsDragOver] = useState(false);
     const [isDetecting, setIsDetecting] = useState(false);
     const [activeTab, setActiveTab] = useState<'commands' | 'env' | 'options'>('commands');
+    const [isSaving, setIsSaving] = useState(false);
+    const [environmentError, setEnvironmentError] = useState('');
+    const savingRef = useRef(false);
+    const mountedRef = useRef(false);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
     
     // Command suggestions
     const [suggestions, setSuggestions] = useState<CommandSuggestion[]>([]);
@@ -76,6 +85,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
 
     // Open folder picker dialog
     const handleBrowseFolder = async () => {
+        if (savingRef.current) return;
         try {
             const selected = await open({
                 directory: true,
@@ -107,6 +117,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
+        if (savingRef.current) return;
 
         const files = e.dataTransfer.files;
         if (files.length > 0) {
@@ -162,18 +173,20 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     };
 
     const updateEnvVar = (index: number, field: 'key' | 'value', value: string) => {
+        setEnvironmentError('');
         const newEnvVars = [...envVars];
         newEnvVars[index][field] = value;
         setEnvVars(newEnvVars);
     };
 
     const removeEnvVar = (index: number) => {
+        setEnvironmentError('');
         setEnvVars(envVars.filter((_, i) => i !== index));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name.trim() || !path.trim()) return;
+        if (savingRef.current || !name.trim() || !path.trim()) return;
 
         const commandList = commands
             .split('\n')
@@ -181,14 +194,33 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
             .filter(cmd => cmd.length > 0);
 
         // Convert env vars array to object
-        const envVarsObj: Record<string, string> = {};
-        envVars.forEach(({ key, value }) => {
-            if (key.trim()) {
-                envVarsObj[key.trim()] = value;
-            }
-        });
+        if (envVars.some(({ key, value }) => !key.trim() && value.length > 0)) {
+            setEnvironmentError('Enter a name for each environment variable that has a value.');
+            setActiveTab('env');
+            return;
+        }
+        const keys = envVars.map(({ key }) => key.trim()).filter(Boolean);
+        if (new Set(keys).size !== keys.length) {
+            setEnvironmentError('Environment variable names must be unique. Remove or rename the duplicate.');
+            setActiveTab('env');
+            return;
+        }
+        const envVarsObj: Record<string, string> = Object.fromEntries(
+            envVars.filter(({ key }) => key.trim()).map(({ key, value }) => [key.trim(), value])
+        );
 
-        onSave(name, path, commandList, { autoStart, restartOnCrash }, envVarsObj);
+        savingRef.current = true;
+        setIsSaving(true);
+        try {
+            await onSave(name, path, commandList, { autoStart, restartOnCrash }, envVarsObj);
+            // A completed save must not dismiss a newer form opened after Cancel.
+            if (mountedRef.current) onClose();
+        } catch {
+            // The caller reports the error; retain this draft for correction or retry.
+        } finally {
+            savingRef.current = false;
+            if (mountedRef.current) setIsSaving(false);
+        }
     };
 
     return (
@@ -200,7 +232,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    <div className="modal-body">
+                    <fieldset className="modal-body project-fields" disabled={isSaving}>
                         {/* Drag & Drop Zone - also clickable */}
                         <div
                             className={`drop-zone ${isDragOver ? 'drag-over' : ''} ${isDetecting ? 'detecting' : ''}`}
@@ -363,8 +395,9 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                         {/* Environment Variables Tab */}
                         {activeTab === 'env' && (
                             <div className="env-vars-section">
+                                {environmentError && <p className="form-error" role="alert">{environmentError}</p>}
                                 <p className="section-description">
-                                    Set environment variables for this project. These will be available to your commands.
+                                    Set environment variables for this project. Restart a running project to apply changes.
                                 </p>
                                 
                                 <div className="env-vars-list">
@@ -430,14 +463,14 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                 </label>
                             </div>
                         )}
-                    </div>
+                    </fieldset>
 
                     <div className="modal-footer">
                         <button type="button" className="btn btn-secondary" onClick={onClose}>
                             Cancel
                         </button>
-                        <button type="submit" className="btn btn-primary">
-                            {project ? 'Save Changes' : 'Add Project'}
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? 'Saving...' : project ? 'Save Changes' : 'Add Project'}
                         </button>
                     </div>
                 </form>

@@ -4,6 +4,7 @@
 use crate::config::{self, AppConfig, Project, Settings};
 use crate::process_manager::{ProcessManager, ProcessStatus};
 use crate::startup;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
@@ -56,6 +57,7 @@ pub fn add_project(
     commands: Vec<String>,
     auto_start: Option<bool>,
     restart_on_crash: Option<bool>,
+    env_vars: Option<HashMap<String, String>>,
 ) -> Result<Project, String> {
     let mut project = Project::new(name, path, commands);
     // Keep the existing defaults for older callers that omit these options.
@@ -65,6 +67,8 @@ pub fn add_project(
     if let Some(restart_on_crash) = restart_on_crash {
         project.restart_on_crash = restart_on_crash;
     }
+    project.env_vars = env_vars.unwrap_or_default();
+    config::validate_env_vars(&project.env_vars)?;
     let mut config = state.config.lock().unwrap();
     config.projects.push(project.clone());
     config::save_config(&config)?;
@@ -73,6 +77,7 @@ pub fn add_project(
 
 #[tauri::command]
 pub fn update_project(state: State<AppState>, project: Project) -> Result<(), String> {
+    config::validate_env_vars(&project.env_vars)?;
     let mut config = state.config.lock().unwrap();
     if let Some(p) = config.projects.iter_mut().find(|p| p.id == project.id) {
         *p = project;
@@ -115,12 +120,7 @@ pub fn start_project(state: State<AppState>, project_id: String) -> Result<(), S
         .clone();
     drop(config);
 
-    state.process_manager.start_project(
-        &project.id,
-        &project.path,
-        &project.commands,
-        project.restart_on_crash,
-    )
+    state.process_manager.start_project(&project)
 }
 
 #[tauri::command]

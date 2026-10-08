@@ -87,8 +87,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
 
 The frontend tests render the real form, App, and project hook with a synthetic
 Tauri bridge. Rust tests use Tauri's mock runtime and test-owned temporary config
-files to check IPC defaults and saved values. They do not launch project commands
-or change Windows startup settings. CI runs these checks on Windows; the tests do
+files to check IPC defaults, environment validation, and saved values. Process
+environment tests launch only disposable Git Bash fixtures in temporary
+directories to check initial start and restart; no configured user projects are
+run and no Windows startup settings are changed. CI runs these checks on Windows; the tests do
 not replace manual Windows GUI acceptance testing.
 
 The Windows runner compiles every test target, embeds a Common Controls v6

@@ -9,6 +9,8 @@ mod startup;
 
 #[cfg(test)]
 mod project_options_tests;
+#[cfg(test)]
+mod project_environment_tests;
 
 use commands::AppState;
 use tauri::Manager;
@@ -35,12 +37,7 @@ pub fn run() {
             drop(config);
 
             for project in projects_to_start {
-                let _ = state.process_manager.start_project(
-                    &project.id,
-                    &project.path,
-                    &project.commands,
-                    project.restart_on_crash,
-                );
+                let _ = state.process_manager.start_project(&project);
             }
 
             Ok(())

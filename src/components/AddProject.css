@@ -483,3 +483,12 @@
     font-size: 0.8rem;
     color: var(--text-muted);
 }
+.project-fields {
+    border: 0;
+    margin: 0;
+    min-width: 0;
+}
+
+.form-error {
+    color: var(--error);
+}

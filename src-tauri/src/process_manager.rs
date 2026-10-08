@@ -7,6 +7,11 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
+use crate::config::{validate_env_vars, Project};
+
+#[cfg(test)]
+#[path = "process_environment_tests.rs"]
+mod environment_tests;
 
 /// Constants
 const MAX_LOG_LINES: usize = 1000;
@@ -44,7 +49,6 @@ pub struct CrashPayload {
 }
 
 /// Process info for a running project
-#[derive(Debug)]
 pub struct ProcessInfo {
     #[allow(dead_code)]
     pub project_id: String,
@@ -55,6 +59,9 @@ pub struct ProcessInfo {
     pub restart_on_crash: bool,
     pub path: String,
     pub commands: Vec<String>,
+    env_vars: HashMap<String, String>,
+    // The monitor retains this identity, so removed/recreated entries cannot reuse it.
+    launch_token: Arc<()>,
 }
 
 impl ProcessInfo {
@@ -68,6 +75,8 @@ impl ProcessInfo {
             restart_on_crash,
             path,
             commands,
+            env_vars: HashMap::new(),
+            launch_token: Arc::new(()),
         }
     }
 
@@ -132,54 +141,20 @@ impl ProcessManager {
     }
 
     /// Start a project process
-    pub fn start_project(
-        &self,
-        project_id: &str,
-        path: &str,
-        commands: &[String],
-        restart_on_crash: bool,
-    ) -> Result<(), String> {
-        // Check if already running
-        {
-            let procs = self.processes.lock().unwrap();
-            if let Some(info) = procs.get(project_id) {
-                if info.status == ProcessStatus::Running {
-                    return Err("Project is already running".to_string());
-                }
+    pub fn start_project(&self, project: &Project) -> Result<(), String> {
+        // Keep the check, spawn, and publication together so a pending restart
+        // cannot replace a newer manual launch with its old environment.
+        let mut procs = self.processes.lock().unwrap();
+        if let Some(info) = procs.get(&project.id) {
+            if info.status == ProcessStatus::Running {
+                return Err("Project is already running".to_string());
             }
         }
-
-        self.spawn_process(project_id, path, commands, restart_on_crash, 0)
-    }
-
-    /// Internal spawn process (used for initial start and restarts)
-    fn spawn_process(
-        &self,
-        project_id: &str,
-        path: &str,
-        commands: &[String],
-        restart_on_crash: bool,
-        restart_count: u32,
-    ) -> Result<(), String> {
-        // Build the full command
-        let cd_command = format!("cd '{}'", path.replace('\\', "/"));
-        let full_commands: Vec<String> = std::iter::once(cd_command)
-            .chain(commands.iter().cloned())
-            .collect();
-        let script = full_commands.join(" && ");
-
-        // Spawn the process with UTF-8 encoding for Python and other tools
-        let mut child = Command::new(&self.git_bash_path)
-            .args(["-c", &script])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // Set UTF-8 encoding environment variables
-            .env("PYTHONIOENCODING", "utf-8")
-            .env("PYTHONUTF8", "1")
-            .env("LANG", "en_US.UTF-8")
-            .env("LC_ALL", "en_US.UTF-8")
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW on Windows
+        let project_id = &project.id;
+        let path = &project.path;
+        let commands = &project.commands;
+        let restart_on_crash = project.restart_on_crash;
+        let mut child = project_command(&self.git_bash_path, path, commands, &project.env_vars)?
             .spawn()
             .map_err(|e| format!("Failed to start process: {}", e))?;
 
@@ -189,15 +164,8 @@ impl ProcessManager {
         let stderr = child.stderr.take();
         let pid = project_id.to_string();
 
-        // Store stdin handle separately (ChildStdin is not Send/Sync safe in ProcessInfo)
-        if let Some(stdin_handle) = stdin {
-            let mut stdin_handles = self.stdin_handles.lock().unwrap();
-            stdin_handles.insert(project_id.to_string(), stdin_handle);
-        }
-
         // Create or update process info
-        {
-            let mut procs = self.processes.lock().unwrap();
+        let launch_token = {
             let info = procs.entry(project_id.to_string()).or_insert_with(|| {
                 ProcessInfo::new(
                     project_id.to_string(),
@@ -208,10 +176,20 @@ impl ProcessManager {
             });
             info.status = ProcessStatus::Running;
             info.child = Some(child);
-            info.restart_count = restart_count;
+            info.restart_count = 0;
             info.restart_on_crash = restart_on_crash;
             info.path = path.to_string();
             info.commands = commands.to_vec();
+            info.env_vars = project.env_vars.clone();
+            info.launch_token = Arc::new(());
+            Arc::clone(&info.launch_token)
+        };
+        drop(procs);
+
+        // Store stdin separately without holding the process lock.
+        if let Some(stdin_handle) = stdin {
+            let mut stdin_handles = self.stdin_handles.lock().unwrap();
+            stdin_handles.insert(project_id.to_string(), stdin_handle);
         }
 
         // Emit status changed event
@@ -302,6 +280,7 @@ impl ProcessManager {
                 app_handle_monitor,
                 git_bash_path,
                 pid_monitor,
+                launch_token,
             );
         });
 
@@ -315,6 +294,7 @@ impl ProcessManager {
         app_handle: Arc<Mutex<Option<AppHandle>>>,
         git_bash_path: String,
         project_id: String,
+        launch_token: Arc<()>,
     ) {
         loop {
             thread::sleep(Duration::from_millis(500));
@@ -323,6 +303,7 @@ impl ProcessManager {
             let restart_count;
             let path;
             let commands;
+            let env_vars;
 
             {
                 let mut procs = processes.lock().unwrap();
@@ -332,7 +313,7 @@ impl ProcessManager {
                 };
 
                 // Check if process is still running
-                if info.status != ProcessStatus::Running {
+                if !Arc::ptr_eq(&info.launch_token, &launch_token) || info.status != ProcessStatus::Running {
                     return; // Not running, exit monitor
                 }
 
@@ -364,6 +345,7 @@ impl ProcessManager {
                                 restart_count = info.restart_count + 1;
                                 path = info.path.clone();
                                 commands = info.commands.clone();
+                                env_vars = info.env_vars.clone();
 
                                 // Emit crash event
                                 if let Some(handle) = app_handle.lock().unwrap().as_ref() {
@@ -415,38 +397,26 @@ impl ProcessManager {
                 }
             }
 
-            // Restart the process (outside lock)
+            // Wait outside the lock, then verify this launch still owns the restart.
             if should_restart {
                 thread::sleep(Duration::from_millis(RESTART_DELAY_MS));
+
+                let mut procs = processes.lock().unwrap();
+                match procs.get(&project_id) {
+                    Some(info) if Arc::ptr_eq(&info.launch_token, &launch_token) && info.status == ProcessStatus::Restarting => {}
+                    _ => return,
+                }
                 
                 // Respawn
-                let cd_command = format!("cd '{}'", path.replace('\\', "/"));
-                let full_commands: Vec<String> = std::iter::once(cd_command)
-                    .chain(commands.iter().cloned())
-                    .collect();
-                let script = full_commands.join(" && ");
-
-                match Command::new(&git_bash_path)
-                    .args(["-c", &script])
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .creation_flags(0x08000000)
-                    .spawn()
+                match project_command(&git_bash_path, &path, &commands, &env_vars)
+                    .and_then(|mut command| command.spawn().map_err(|error| error.to_string()))
                 {
                     Ok(mut child) => {
                         let stdin = child.stdin.take();
                         let stdout = child.stdout.take();
                         let stderr = child.stderr.take();
 
-                        // Store stdin handle for the restarted process
-                        if let Some(stdin_handle) = stdin {
-                            let mut stdin_map = stdin_handles.lock().unwrap();
-                            stdin_map.insert(project_id.clone(), stdin_handle);
-                        }
-
                         {
-                            let mut procs = processes.lock().unwrap();
                             if let Some(info) = procs.get_mut(&project_id) {
                                 info.child = Some(child);
                                 info.status = ProcessStatus::Running;
@@ -455,6 +425,13 @@ impl ProcessManager {
                                 let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
                                 info.add_log(format!("[{}] Process restarted successfully", timestamp));
                             }
+                        }
+                        drop(procs);
+
+                        // Store stdin without holding the process lock.
+                        if let Some(stdin_handle) = stdin {
+                            let mut stdin_map = stdin_handles.lock().unwrap();
+                            stdin_map.insert(project_id.clone(), stdin_handle);
                         }
 
                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
@@ -528,12 +505,12 @@ impl ProcessManager {
                         // Continue monitoring
                     }
                     Err(e) => {
-                        let mut procs = processes.lock().unwrap();
                         if let Some(info) = procs.get_mut(&project_id) {
                             info.status = ProcessStatus::Error;
                             let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
                             info.add_log(format!("[{}] [ERR] Failed to restart: {}", timestamp, e));
                         }
+                        drop(procs);
                         
                         if let Some(handle) = app_handle.lock().unwrap().as_ref() {
                             let _ = handle.emit("process-status", StatusPayload {
@@ -753,6 +730,35 @@ impl Default for ProcessManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Build the same child environment for initial launches and crash restarts.
+fn project_command(
+    git_bash_path: &str,
+    path: &str,
+    commands: &[String],
+    env_vars: &HashMap<String, String>,
+) -> Result<Command, String> {
+    validate_env_vars(env_vars)?;
+    let cd_command = format!("cd '{}'", path.replace('\\', "/"));
+    let script = std::iter::once(cd_command)
+        .chain(commands.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" && ");
+    let mut command = Command::new(git_bash_path);
+    command
+        .args(["-c", &script])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("PYTHONUTF8", "1")
+        .env("LANG", "en_US.UTF-8")
+        .env("LC_ALL", "en_US.UTF-8")
+        // Pass raw values to the child, never interpolate them into the shell script.
+        .envs(env_vars)
+        .creation_flags(0x08000000); // CREATE_NO_WINDOW on Windows
+    Ok(command)
 }
 
 // Windows-specific trait for process spawning
