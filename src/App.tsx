@@ -15,7 +15,7 @@ function AppContent() {
     projects,
     loading,
     statuses,
-    logs,
+    logViews,
     logErrors,
     refreshProjects,
     addProject,
@@ -222,7 +222,8 @@ function AppContent() {
             key={selectedProject.id}
             projectId={selectedProject.id}
             projectName={selectedProject.name}
-            logs={logs[selectedProject.id] || []}
+            records={logViews[selectedProject.id]?.records || []}
+            sessionId={logViews[selectedProject.id]?.sessionId ?? null}
             logError={logErrors[selectedProject.id]}
             onReloadLogs={() => { void refreshProjects(); }}
             onClear={() => {

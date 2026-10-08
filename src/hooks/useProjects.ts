@@ -36,6 +36,8 @@ export function useProjects() {
 
     const logs = useMemo(() => Object.fromEntries(Object.entries(logStates)
         .map(([id, state]) => [id, state.records.map(record => record.log)])), [logStates]);
+    const logViews = useMemo(() => Object.fromEntries(Object.entries(logStates)
+        .map(([id, state]) => [id, { records: state.records, sessionId: state.sessionId }])), [logStates]);
     const logErrors = useMemo(() => Object.fromEntries(projects.map(project => [project.id,
         logStates[project.id]?.captureError
             ? 'Log capture stopped because its sequence limit was reached. Relaunch DevBoot to resume capture.'
@@ -204,7 +206,7 @@ export function useProjects() {
         if (!lifetime || readLifetimeRef.current !== lifetime || !acceptsProject(projectId)) return;
         updateLogs(projectId, state => receiveLogEvent(state, { kind: 'clear', snapshot }));
     };
-    return { projects, loading, statuses, logs, logErrors, addProject, updateProject, deleteProject,
+    return { projects, loading, statuses, logs, logViews, logErrors, addProject, updateProject, deleteProject,
         startProject, stopProject, restartProject, clearLogs, refreshProjects: loadProjects };
 }
 
