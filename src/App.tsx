@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Terminal } from './components/Terminal';
 import { Settings } from './components/Settings';
@@ -7,7 +7,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { ToastProvider, useToast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useProjects, useSettings } from './hooks/useProjects';
-import { Project, ProjectOptions } from './types';
+import { Project, ProjectOptions, Settings as SettingsType } from './types';
 import './App.css';
 
 function AppContent() {
@@ -27,7 +27,12 @@ function AppContent() {
     clearLogs,
   } = useProjects();
 
-  const { settings, updateSettings } = useSettings();
+  const {
+    settings, loading: settingsLoading, loadError: settingsLoadError,
+    savingSettings, failedSettings, saveError: settingsSaveError,
+    startupError: settingsStartupError, updateSettings,
+    retryLoad: retrySettingsLoad, dismissSaveError,
+  } = useSettings();
   const toast = useToast();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -35,6 +40,12 @@ function AppContent() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+
+  const closeSettings = useCallback(() => {
+    if (!showSettings) return;
+    setShowSettings(false);
+    dismissSaveError();
+  }, [showSettings, dismissSaveError]);
 
   // Get selected project
   const selectedProject = projects.find(p => p.id === selectedProjectId);
@@ -94,7 +105,7 @@ function AppContent() {
 
       // Escape to close modals
       if (e.key === 'Escape') {
-        setShowSettings(false);
+        closeSettings();
         setShowAddProject(false);
         setEditingProject(null);
         setDeletingProject(null);
@@ -103,7 +114,7 @@ function AppContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedProject, statuses]);
+  }, [selectedProject, statuses, closeSettings]);
 
   // Handlers with toast notifications
   const handleAddProject = async (name: string, path: string, commands: string[], options: ProjectOptions, envVars?: Record<string, string>) => {
@@ -180,13 +191,13 @@ function AppContent() {
     }
   };
 
-  const handleSettingsSave = async (newSettings: typeof settings) => {
+  const handleSettingsSave = async (newSettings: SettingsType) => {
     try {
       await updateSettings(newSettings);
       toast.success('Settings saved');
-      setShowSettings(false);
     } catch (error) {
-      toast.error(`Failed to save settings: ${error}`);
+      toast.error(`${error}`);
+      throw error;
     }
   };
 
@@ -255,9 +266,15 @@ function AppContent() {
 
       {showSettings && (
         <Settings
-          settings={settings}
+          settings={savingSettings ?? failedSettings ?? settings}
+          loading={settingsLoading}
+          loadError={settingsLoadError}
+          saving={savingSettings !== null}
+          saveError={settingsSaveError}
+          startupError={settingsStartupError}
+          onRetryLoad={retrySettingsLoad}
           onSave={handleSettingsSave}
-          onClose={() => setShowSettings(false)}
+          onClose={closeSettings}
         />
       )}
 

@@ -111,6 +111,19 @@ DevBoot stores its configuration in:
 
 4. **Configure Auto-Start** - Enable in Settings to start DevBoot with Windows
 
+   Settings waits for your saved preferences before enabling edits. If loading
+   fails, choose **Retry loading settings**. **Save Changes** keeps the window
+   open until both the preferences and Windows startup choice finish saving;
+   controls are disabled while that save is pending. You can still close the
+   window, but closing does not cancel a submitted save. Reopening shows the
+   submitted values and waits for its result, without allowing a second save.
+   A write failure keeps the attempted draft for retry, including if the failure
+   arrives after closing. Cancel, the close button, Escape, or the backdrop
+   discard the local draft when no save is pending; reopening then uses the last
+   confirmed preferences. If preferences were saved but the Windows startup
+   update was not confirmed, Settings keeps that notice until a successful
+   retry. Closing does not roll back an already submitted operation.
+
 5. **Set Project Environment** - Use the Environment tab when adding or editing a
    project. Values are saved with the project and passed unchanged to its Git Bash
    process on manual start and auto-start. A running process keeps its launch
