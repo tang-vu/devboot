@@ -43,14 +43,14 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
             if (detectionTimer.current !== null) clearTimeout(detectionTimer.current);
         };
     }, []);
-    
+
     // Command suggestions
     const [suggestions, setSuggestions] = useState<CommandSuggestion[]>([]);
     const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
-    
+
     // Environment variables
     const [envVars, setEnvVars] = useState<Array<{key: string, value: string}>>(
-        project?.env_vars 
+        project?.env_vars
             ? Object.entries(project.env_vars).map(([key, value]) => ({ key, value }))
             : []
     );
@@ -153,7 +153,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                 multiple: false,
                 title: 'Select Project Folder',
             });
-            
+
             if (!ownsDetection(generation)) return;
             if (selected && typeof selected === 'string') choosePath(selected);
             else restoreDraft();
@@ -288,260 +288,262 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    <fieldset className="modal-body project-fields" disabled={isSaving}>
-                        {/* Drag & Drop Zone - also clickable */}
-                        <div
-                            className={`drop-zone ${isDragOver ? 'drag-over' : ''} ${detectionPhase === 'pending' ? 'detecting' : ''}`}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                            onClick={handleBrowseFolder}
-                        >
-                            {detectionPhase === 'pending' || detectionPhase === 'picking' ? (
-                                <>
-                                    <span className="drop-icon">...</span>
-                                    <p role="status">{detectionPhase === 'picking' ? 'Choosing project folder...' : 'Detecting project type...'}</p>
-                                </>
-                            ) : (
-                                <>
-                                    <span className="drop-icon">[+]</span>
-                                    <p>Click to browse or drag & drop a folder</p>
-                                    <p className="drop-hint">Auto-detects project type and suggests commands</p>
-                                </>
+                    <div className="modal-body project-scroll-region">
+                        <fieldset className="project-fields" disabled={isSaving}>
+                            {/* Drag & Drop Zone - also clickable */}
+                            <div
+                                className={`drop-zone ${isDragOver ? 'drag-over' : ''} ${detectionPhase === 'pending' ? 'detecting' : ''}`}
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                onClick={handleBrowseFolder}
+                            >
+                                {detectionPhase === 'pending' || detectionPhase === 'picking' ? (
+                                    <>
+                                        <span className="drop-icon">...</span>
+                                        <p role="status">{detectionPhase === 'picking' ? 'Choosing project folder...' : 'Detecting project type...'}</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="drop-icon">[+]</span>
+                                        <p>Click to browse or drag & drop a folder</p>
+                                        <p className="drop-hint">Auto-detects project type and suggests commands</p>
+                                    </>
+                                )}
+                            </div>
+
+                            {pickerError && <p className="form-error" role="alert">{pickerError}</p>}
+                            {detectionPhase === 'error' && (
+                                <div className="detection-error" role="alert">
+                                    <p className="form-error">{detectionError}</p>
+                                    <p>Your draft is unchanged. Retry detection, or continue manually and review the name and startup commands for this folder.</p>
+                                    <div className="detection-actions">
+                                        <button type="button" className="btn btn-secondary" onClick={() => choosePath(pathRef.current)}>Retry detection</button>
+                                        <button type="button" className="btn btn-secondary" onClick={() => {
+                                            invalidateDetection();
+                                            setDetectionError('');
+                                            changeDetectionPhase('idle');
+                                            setActiveTab('commands');
+                                        }}>Continue manually</button>
+                                    </div>
+                                </div>
                             )}
-                        </div>
 
-                        {pickerError && <p className="form-error" role="alert">{pickerError}</p>}
-                        {detectionPhase === 'error' && (
-                            <div className="detection-error" role="alert">
-                                <p className="form-error">{detectionError}</p>
-                                <p>Your draft is unchanged. Retry detection, or continue manually and review the name and startup commands for this folder.</p>
-                                <div className="detection-actions">
-                                    <button type="button" className="btn btn-secondary" onClick={() => choosePath(pathRef.current)}>Retry detection</button>
-                                    <button type="button" className="btn btn-secondary" onClick={() => {
-                                        invalidateDetection();
-                                        setDetectionError('');
-                                        changeDetectionPhase('idle');
-                                        setActiveTab('commands');
-                                    }}>Continue manually</button>
+                            {projectType && (
+                                <div className="detected-type">
+                                    <span className="type-badge">{projectType}</span>
+                                    {framework && <span className="framework-badge">{framework}</span>}
+                                    <span>Detected!</span>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {projectType && (
-                            <div className="detected-type">
-                                <span className="type-badge">{projectType}</span>
-                                {framework && <span className="framework-badge">{framework}</span>}
-                                <span>Detected!</span>
-                            </div>
-                        )}
-
-                        {/* Command Suggestions */}
-                        {suggestions.length > 0 && (
-                            <div className="suggestions-section">
-                                <h4>Suggested Commands</h4>
-                                <p className="suggestions-hint">Check the commands you want to run on startup</p>
-                                <div className="suggestions-list">
-                                    {suggestions.map((suggestion, index) => (
-                                        <label 
-                                            key={index} 
-                                            className={`suggestion-item ${selectedSuggestions.has(index) ? 'selected' : ''}`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedSuggestions.has(index)}
-                                                onChange={() => toggleSuggestion(index)}
-                                            />
-                                            <div className="suggestion-content">
-                                                <div className="suggestion-command">
-                                                    <code>{suggestion.command}</code>
-                                                    {suggestion.is_recommended && (
-                                                        <span className="recommended-badge">Recommended</span>
-                                                    )}
+                            {/* Command Suggestions */}
+                            {suggestions.length > 0 && (
+                                <div className="suggestions-section">
+                                    <h4>Suggested Commands</h4>
+                                    <p className="suggestions-hint">Check the commands you want to run on startup</p>
+                                    <div className="suggestions-list">
+                                        {suggestions.map((suggestion, index) => (
+                                            <label
+                                                key={index}
+                                                className={`suggestion-item ${selectedSuggestions.has(index) ? 'selected' : ''}`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedSuggestions.has(index)}
+                                                    onChange={() => toggleSuggestion(index)}
+                                                />
+                                                <div className="suggestion-content">
+                                                    <div className="suggestion-command">
+                                                        <code>{suggestion.command}</code>
+                                                        {suggestion.is_recommended && (
+                                                            <span className="recommended-badge">Recommended</span>
+                                                        )}
+                                                    </div>
+                                                    <span className="suggestion-description">{suggestion.description}</span>
                                                 </div>
-                                                <span className="suggestion-description">{suggestion.description}</span>
-                                            </div>
-                                        </label>
-                                    ))}
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        <div className="form-group">
-                            <label htmlFor="project-name">Project Name</label>
-                            <input
-                                id="project-name"
-                                type="text"
-                                value={name}
-                                onChange={e => { nameEdited.current = true; setName(e.target.value); }}
-                                placeholder="e.g. My Bot"
-                                required
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label htmlFor="project-path">Project Path</label>
-                            <div className="input-with-button">
+                            <div className="form-group">
+                                <label htmlFor="project-name">Project Name</label>
                                 <input
-                                    id="project-path"
+                                    id="project-name"
                                     type="text"
-                                    value={path}
-                                    onChange={e => choosePath(e.target.value, true)}
-                                    placeholder="e.g. C:/Users/You/Documents/GitHub/mybot"
+                                    value={name}
+                                    onChange={e => { nameEdited.current = true; setName(e.target.value); }}
+                                    placeholder="e.g. My Bot"
                                     required
                                 />
-                                <button 
-                                    type="button" 
-                                    className="browse-btn"
-                                    onClick={handleBrowseFolder}
-                                    disabled={detectionPhase === 'picking'}
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="project-path">Project Path</label>
+                                <div className="input-with-button">
+                                    <input
+                                        id="project-path"
+                                        type="text"
+                                        value={path}
+                                        onChange={e => choosePath(e.target.value, true)}
+                                        placeholder="e.g. C:/Users/You/Documents/GitHub/mybot"
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        className="browse-btn"
+                                        onClick={handleBrowseFolder}
+                                        disabled={detectionPhase === 'picking'}
+                                    >
+                                        Browse
+                                    </button>
+                                </div>
+                                <span className="form-hint">Full path to project directory</span>
+                            </div>
+
+                            {/* Tabs */}
+                            <div className="form-tabs">
+                                <button
+                                    type="button"
+                                    className={`tab-btn ${activeTab === 'commands' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('commands')}
                                 >
-                                    Browse
+                                    Commands
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`tab-btn ${activeTab === 'env' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('env')}
+                                >
+                                    Environment ({envVars.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`tab-btn ${activeTab === 'options' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('options')}
+                                >
+                                    Options
                                 </button>
                             </div>
-                            <span className="form-hint">Full path to project directory</span>
-                        </div>
 
-                        {/* Tabs */}
-                        <div className="form-tabs">
-                            <button
-                                type="button"
-                                className={`tab-btn ${activeTab === 'commands' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('commands')}
-                            >
-                                Commands
-                            </button>
-                            <button
-                                type="button"
-                                className={`tab-btn ${activeTab === 'env' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('env')}
-                            >
-                                Environment ({envVars.length})
-                            </button>
-                            <button
-                                type="button"
-                                className={`tab-btn ${activeTab === 'options' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('options')}
-                            >
-                                Options
-                            </button>
-                        </div>
-
-                        {/* Commands Tab */}
-                        {activeTab === 'commands' && (
-                            <>
-                                <div className="form-group">
-                                    <div className="commands-header">
-                                        <label htmlFor="project-commands">Startup Commands</label>
-                                        <select 
-                                            className="template-select"
-                                            onChange={e => handleTemplateChange(e.target.value)}
-                                            defaultValue=""
-                                        >
-                                            <option value="" disabled>Apply template...</option>
-                                            {projectTemplates.map(t => (
-                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <textarea
-                                        id="project-commands"
-                                        value={commands}
-                                        onChange={e => {
-                                            commandsEdited.current = true;
-                                            setSelectedSuggestions(new Set());
-                                            setCommands(e.target.value);
-                                        }}
-                                        placeholder={`source .venv/Scripts/activate\npython main.py`}
-                                        rows={5}
-                                    />
-                                    <span className="form-hint">One command per line. These will run in Git Bash.</span>
-                                </div>
-
-                                <div className="command-preview">
-                                    <h4>Preview</h4>
-                                    <code>
-                                        cd "{path || '/your/project/path'}"<br />
-                                        {commands.split('\n').filter(c => c.trim()).map((cmd, i) => (
-                                            <span key={i}>{cmd}<br /></span>
-                                        ))}
-                                    </code>
-                                </div>
-                            </>
-                        )}
-
-                        {/* Environment Variables Tab */}
-                        {activeTab === 'env' && (
-                            <div className="env-vars-section">
-                                {environmentError && <p className="form-error" role="alert">{environmentError}</p>}
-                                <p className="section-description">
-                                    Set environment variables for this project. Restart a running project to apply changes.
-                                </p>
-                                
-                                <div className="env-vars-list">
-                                    {envVars.map((env, index) => (
-                                        <div key={index} className="env-var-row">
-                                            <input
-                                                type="text"
-                                                placeholder="KEY"
-                                                value={env.key}
-                                                onChange={e => updateEnvVar(index, 'key', e.target.value)}
-                                                className="env-key"
-                                            />
-                                            <span className="env-equals">=</span>
-                                            <input
-                                                type="text"
-                                                placeholder="value"
-                                                value={env.value}
-                                                onChange={e => updateEnvVar(index, 'value', e.target.value)}
-                                                className="env-value"
-                                            />
-                                            <button
-                                                type="button"
-                                                className="env-remove"
-                                                onClick={() => removeEnvVar(index)}
+                            {/* Commands Tab */}
+                            {activeTab === 'commands' && (
+                                <>
+                                    <div className="form-group">
+                                        <div className="commands-header">
+                                            <label htmlFor="project-commands">Startup Commands</label>
+                                            <select
+                                                className="template-select"
+                                                onChange={e => handleTemplateChange(e.target.value)}
+                                                defaultValue=""
                                             >
-                                                x
-                                            </button>
+                                                <option value="" disabled>Apply template...</option>
+                                                {projectTemplates.map(t => (
+                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                    ))}
+                                        <textarea
+                                            id="project-commands"
+                                            value={commands}
+                                            onChange={e => {
+                                                commandsEdited.current = true;
+                                                setSelectedSuggestions(new Set());
+                                                setCommands(e.target.value);
+                                            }}
+                                            placeholder={`source .venv/Scripts/activate\npython main.py`}
+                                            rows={5}
+                                        />
+                                        <span className="form-hint">One command per line. These will run in Git Bash.</span>
+                                    </div>
+
+                                    <div className="command-preview">
+                                        <h4>Preview</h4>
+                                        <code>
+                                            cd "{path || '/your/project/path'}"<br />
+                                            {commands.split('\n').filter(c => c.trim()).map((cmd, i) => (
+                                                <span key={i}>{cmd}<br /></span>
+                                            ))}
+                                        </code>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Environment Variables Tab */}
+                            {activeTab === 'env' && (
+                                <div className="env-vars-section">
+                                    {environmentError && <p className="form-error" role="alert">{environmentError}</p>}
+                                    <p className="section-description">
+                                        Set environment variables for this project. Restart a running project to apply changes.
+                                    </p>
+
+                                    <div className="env-vars-list">
+                                        {envVars.map((env, index) => (
+                                            <div key={index} className="env-var-row">
+                                                <input
+                                                    type="text"
+                                                    placeholder="KEY"
+                                                    value={env.key}
+                                                    onChange={e => updateEnvVar(index, 'key', e.target.value)}
+                                                    className="env-key"
+                                                />
+                                                <span className="env-equals">=</span>
+                                                <input
+                                                    type="text"
+                                                    placeholder="value"
+                                                    value={env.value}
+                                                    onChange={e => updateEnvVar(index, 'value', e.target.value)}
+                                                    className="env-value"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="env-remove"
+                                                    onClick={() => removeEnvVar(index)}
+                                                >
+                                                    x
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <button type="button" className="add-env-btn" onClick={addEnvVar}>
+                                        + Add Variable
+                                    </button>
                                 </div>
+                            )}
 
-                                <button type="button" className="add-env-btn" onClick={addEnvVar}>
-                                    + Add Variable
-                                </button>
-                            </div>
-                        )}
+                            {/* Options Tab */}
+                            {activeTab === 'options' && (
+                                <div className="options-section">
+                                    <label className="option-item">
+                                        <input
+                                            type="checkbox"
+                                            checked={autoStart}
+                                            onChange={e => setAutoStart(e.target.checked)}
+                                        />
+                                        <div className="option-info">
+                                            <span className="option-title">Auto-start on launch</span>
+                                            <span className="option-desc">Start this project when DevBoot opens</span>
+                                        </div>
+                                    </label>
 
-                        {/* Options Tab */}
-                        {activeTab === 'options' && (
-                            <div className="options-section">
-                                <label className="option-item">
-                                    <input
-                                        type="checkbox"
-                                        checked={autoStart}
-                                        onChange={e => setAutoStart(e.target.checked)}
-                                    />
-                                    <div className="option-info">
-                                        <span className="option-title">Auto-start on launch</span>
-                                        <span className="option-desc">Start this project when DevBoot opens</span>
-                                    </div>
-                                </label>
-
-                                <label className="option-item">
-                                    <input
-                                        type="checkbox"
-                                        checked={restartOnCrash}
-                                        onChange={e => setRestartOnCrash(e.target.checked)}
-                                    />
-                                    <div className="option-info">
-                                        <span className="option-title">Auto-restart on crash</span>
-                                        <span className="option-desc">Automatically restart if the process crashes (max 5 attempts)</span>
-                                    </div>
-                                </label>
-                            </div>
-                        )}
-                    </fieldset>
+                                    <label className="option-item">
+                                        <input
+                                            type="checkbox"
+                                            checked={restartOnCrash}
+                                            onChange={e => setRestartOnCrash(e.target.checked)}
+                                        />
+                                        <div className="option-info">
+                                            <span className="option-title">Auto-restart on crash</span>
+                                            <span className="option-desc">Automatically restart if the process crashes (max 5 attempts)</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            )}
+                        </fieldset>
+                    </div>
 
                     <div className="modal-footer">
                         <button type="button" className="btn btn-secondary" onClick={closeForm}>

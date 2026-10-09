@@ -24,7 +24,6 @@
     border-radius: 6px;
     cursor: pointer;
 }
-.project-detection-controls .synthetic-folder { padding: 9px; margin: 8px 0; border: 1px dashed #93a3d8; cursor: grab; }
 .project-detection-controls details { margin-top: 16px; }
 .project-detection-controls pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
 .project-detection-app { margin-left: 330px; }

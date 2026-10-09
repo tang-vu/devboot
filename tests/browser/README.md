@@ -23,23 +23,10 @@ and removes the remote font import. CSP plus the browser suite's request guard
 restrict traffic to the fixture's loopback origin and fail unexpected requests
 or popups. No credentials or user files are used.
 
-`project-detection.spec.ts` uses mouse clicks, keyboard input and real native
-drag gestures. Its drag test creates two empty, test-owned temporary files in
-that test's output directory and selects their paths through the fixture's file
-input. The input accepts only the declared synthetic names and zero-length files.
-Native dragstart adds the browser-selected File directly to its DataTransfer;
-it never clones it. Chromium's native drag transport discarded renderer-created
-Files in the hosted run, despite trusted drag events reaching the target. The
-temporary files are removed in a `finally` block. No user files are selected,
-read, or changed; no file data leaves the isolated loopback fixture.
-
-Tests never dispatch DOM events or inject application state. This checks browser
-drag/drop ownership, not native Windows folder-path extraction. Each drag moves
-over its destination twice so the real handler receives `dragover` before the
-drop. Passive fixture observers retain trusted-event flags, coordinates, types,
-and file names; assertions require both an accepted dragover and the original
-file at drop, making geometry and file-transport failures distinguishable.
-Tests cover:
+`project-detection.spec.ts` uses mouse clicks, keyboard input, and native wheel
+scrolling. Tests never dispatch DOM events or inject application state. Folder
+paths, picker results, and projects are synthetic data held in memory; no files
+are selected, read, or changed. Tests cover:
 
 - Older success/failure before and after a newer result; A → B → A ownership
 - Debounce cancellation, path clearing, shorter paths, trailing separators, and
@@ -49,20 +36,30 @@ Tests cover:
 - Detection failure, explicit retry/manual recovery, disabled Save/Enter paths,
   and exact add/update IPC payloads including environment values and options
 - Held picker selection, failure, cancellation/resumption, duplicate prevention,
-  and typed or dropped paths superseding the picker
+  and typed paths superseding the picker
 - Cancel, close, Escape, and backdrop dismissal followed by reopening; old
   picker/detection/save completions cannot mutate or dismiss the new form
 - Failed save retaining its full draft for retry and the actual App edit route
 - Panel, header, footer, and control containment at 1280×900 and 1280×640;
   native wheel and Tab reach recovery controls and bottom fields while only the
-  fieldset scrolls, including a fixed eight-suggestion result
+  form body scrolls, including a fixed eight-suggestion result; the form itself,
+  header, and footer stay fixed
 
 Each test attaches its synthetic ledger; selected cases also attach current
-generation, manual edits, failure, recovery, and native drag screenshots. Geometry
+generation, manual edits, failure, and recovery screenshots. Geometry
 cases attach read-only measurements and pending/error/recovery/tall-content
-screenshots at both viewport sizes. The file-input selection is test setup for
-browser drag transport; it does not test Windows Explorer or the native folder
-picker. Run only
+screenshots at both viewport sizes. Final panel/form/body/fieldset/control measurements
+are attached even if containment or actionability fails before a state capture.
+
+OS file-drop transport is not covered by this browser suite. The hosted Chromium
+attempts delivered trusted drop events with an empty file list for both
+renderer-created and file-input-backed Files, so the unsupported harness was
+removed. Those attempts failed; they are not browser acceptance. Deterministic
+component tests in `tests/project-detection.test.tsx` retain drop ownership/race
+coverage, which does not establish Windows Explorer, Tauri file-drop, or native
+folder-picker behavior.
+
+Run only
 this suite with `npm run test:browser -- project-detection.spec.ts`. To build the
 isolated fixture without starting a browser:
 

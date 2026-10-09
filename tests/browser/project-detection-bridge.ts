@@ -7,8 +7,6 @@ export const syntheticPaths = Object.freeze({
     Tall: 'C:\\Synthetic\\Tall',
     Short: 'C:\\A',
     Trailing: 'C:\\Synthetic\\Trailing\\',
-    DropA: 'synthetic-drop-a',
-    DropB: 'synthetic-drop-b',
 });
 
 const settings: Settings = {
@@ -17,7 +15,7 @@ const settings: Settings = {
 
 export type BridgeEntry = {
     id: number;
-    kind: 'invoke' | 'picker' | 'listen' | 'unlisten' | 'denied' | 'drag';
+    kind: 'invoke' | 'picker' | 'listen' | 'unlisten' | 'denied';
     command: string;
     args: unknown;
     status: 'pending' | 'resolved' | 'rejected' | 'denied';
@@ -87,20 +85,6 @@ function isProject(value: unknown): value is Project {
 export function deny(command: string, args?: unknown): never {
     record({ kind: 'denied', command, args: args ?? null, status: 'denied' });
     throw new Error(`Synthetic project fixture refuses native or external action: ${command}`);
-}
-
-// Observe the browser's real drag transport without changing the event or its
-// data. File lists are intentionally captured synchronously: dragover protects
-// them, whereas dragstart/drop allow reading them.
-export function observeDrag(event: DragEvent, target: 'source' | 'app') {
-    record({
-        kind: 'drag', command: event.type, status: 'resolved',
-        args: {
-            target, trusted: event.isTrusted, x: event.clientX, y: event.clientY,
-            types: Array.from(event.dataTransfer?.types ?? []),
-            files: Array.from(event.dataTransfer?.files ?? []).map(file => file.name),
-        },
-    });
 }
 
 function hold<T>(kind: 'invoke' | 'picker', command: string, args: unknown): Promise<T> {

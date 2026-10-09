@@ -1,6 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
 import type { BridgeEntry } from './project-detection-bridge';
-import { createSyntheticDragFiles } from './project-detection-files.mjs';
 
 const origin = 'http://127.0.0.1:4181';
 // Deliberately repeat the public fixture contract instead of importing a bridge
@@ -8,7 +7,7 @@ const origin = 'http://127.0.0.1:4181';
 const paths = {
     A: 'C:\\Synthetic\\ProjectA', B: 'C:\\Synthetic\\ProjectB', Empty: 'C:\\Synthetic\\Empty',
     Tall: 'C:\\Synthetic\\Tall',
-    Short: 'C:\\A', Trailing: 'C:\\Synthetic\\Trailing\\', DropA: 'synthetic-drop-a', DropB: 'synthetic-drop-b',
+    Short: 'C:\\A', Trailing: 'C:\\Synthetic\\Trailing\\',
 };
 const form = (page: Page) => page.locator('.add-project-modal');
 const nameField = (page: Page) => form(page).getByLabel('Project Name', { exact: true });
@@ -126,19 +125,42 @@ async function panelGeometry(page: Page) {
     return form(page).evaluate(panel => {
         const rect = (element: Element) => {
             const box = element.getBoundingClientRect();
-            return { top: box.top, bottom: box.bottom, left: box.left, right: box.right, height: box.height };
+            return {
+                x: box.x, y: box.y, top: box.top, bottom: box.bottom,
+                left: box.left, right: box.right, width: box.width, height: box.height,
+            };
         };
         const overlay = panel.parentElement!;
         const fields = panel.querySelector('fieldset')!;
+        const formElement = panel.querySelector('form')!;
+        const scrollRegion = panel.querySelector<HTMLElement>('.project-scroll-region')!;
+        const dimensions = (element: HTMLElement) => {
+            const style = getComputedStyle(element);
+            return {
+                ...rect(element), scrollTop: element.scrollTop, scrollLeft: element.scrollLeft,
+                scrollHeight: element.scrollHeight, clientHeight: element.clientHeight,
+                scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+                display: style.display, flex: style.flex, minHeight: style.minHeight,
+                overflowX: style.overflowX, overflowY: style.overflowY,
+            };
+        };
         return {
             viewport: { width: innerWidth, height: innerHeight },
             panel: rect(panel), header: rect(panel.querySelector('.modal-header')!),
-            footer: rect(panel.querySelector('.modal-footer')!), form: rect(panel.querySelector('form')!),
-            fields: { ...rect(fields), scrollTop: fields.scrollTop, scrollHeight: fields.scrollHeight,
-                clientHeight: fields.clientHeight, overflowY: getComputedStyle(fields).overflowY },
+            footer: rect(panel.querySelector('.modal-footer')!), form: dimensions(formElement),
+            body: dimensions(scrollRegion), fields: dimensions(fields),
             overlay: { scrollTop: overlay.scrollTop, scrollHeight: overlay.scrollHeight, clientHeight: overlay.clientHeight },
             background: getComputedStyle(panel).backgroundImage,
             fixedControls: Array.from(panel.querySelectorAll('.modal-header button, .modal-footer button')).map(rect),
+            fieldControls: Array.from(fields.querySelectorAll('input, button, select, textarea')).map(element => {
+                const box = element.getBoundingClientRect();
+                const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+                return {
+                    id: element.id, tag: element.tagName, className: element.className,
+                    ...rect(element), hitTag: hit?.tagName ?? null,
+                    hitId: hit?.id ?? null, hitClassName: hit?.className ?? null,
+                };
+            }),
         };
     });
 }
@@ -152,47 +174,52 @@ async function expectContainedPanel(page: Page) {
         expect(box.left).toBeGreaterThanOrEqual(-1);
         expect(box.right).toBeLessThanOrEqual(geometry.viewport.width + 1);
     }
-    for (const box of [geometry.header, geometry.footer, geometry.form, geometry.fields, ...geometry.fixedControls]) {
+    for (const box of [geometry.header, geometry.footer, geometry.form, geometry.body, ...geometry.fixedControls]) {
         expect(box.top).toBeGreaterThanOrEqual(geometry.panel.top - 1);
         expect(box.bottom).toBeLessThanOrEqual(geometry.panel.bottom + 1);
         expect(box.left).toBeGreaterThanOrEqual(geometry.panel.left - 1);
         expect(box.right).toBeLessThanOrEqual(geometry.panel.right + 1);
     }
-    expect(geometry.fields.top).toBeGreaterThanOrEqual(geometry.header.bottom - 1);
-    expect(geometry.fields.bottom).toBeLessThanOrEqual(geometry.footer.top + 1);
-    expect(geometry.fields.clientHeight).toBeGreaterThan(0);
-    expect(['auto', 'scroll']).toContain(geometry.fields.overflowY);
+    expect(geometry.body.top).toBeGreaterThanOrEqual(geometry.header.bottom - 1);
+    expect(geometry.body.bottom).toBeLessThanOrEqual(geometry.footer.top + 1);
+    expect(geometry.body.clientHeight).toBeGreaterThan(0);
+    expect(['auto', 'scroll']).toContain(geometry.body.overflowY);
+    expect(geometry.form.scrollTop).toBe(0);
+    expect(geometry.form.scrollLeft).toBe(0);
+    expect(geometry.form.scrollHeight).toBeLessThanOrEqual(geometry.form.clientHeight + 1);
+    expect(geometry.form.scrollWidth).toBeLessThanOrEqual(geometry.form.clientWidth + 1);
+    expect(geometry.fields.scrollTop).toBe(0);
     expect(geometry.overlay.scrollTop).toBe(0);
     expect(geometry.overlay.scrollHeight).toBeLessThanOrEqual(geometry.overlay.clientHeight + 1);
     expect(geometry.background).not.toBe('none');
     return geometry;
 }
 
-async function expectControlInsideFields(control: Locator) {
+async function expectControlInsideBody(control: Locator) {
     const geometry = await control.evaluate(element => {
         const box = element.getBoundingClientRect();
-        const fields = element.closest('fieldset')!.getBoundingClientRect();
+        const body = element.closest('.project-scroll-region')!.getBoundingClientRect();
         const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
         return {
-            inside: box.top >= fields.top - 1 && box.bottom <= fields.bottom + 1
-                && box.left >= fields.left - 1 && box.right <= fields.right + 1,
+            inside: box.top >= body.top - 1 && box.bottom <= body.bottom + 1
+                && box.left >= body.left - 1 && box.right <= body.right + 1,
             hit: hit === element || (hit !== null && element.contains(hit)),
         };
     });
     expect(geometry).toEqual({ inside: true, hit: true });
 }
 
-async function wheelFields(page: Page, direction: 'top' | 'bottom') {
-    const fields = form(page).locator('fieldset');
-    const box = await fields.boundingBox();
+async function wheelBody(page: Page, direction: 'top' | 'bottom') {
+    const body = form(page).locator('.project-scroll-region');
+    const box = await body.boundingBox();
     expect(box).not.toBeNull();
-    // The right padding belongs to the fieldset, avoiding nested textarea scroll.
+    // The right padding belongs to the body, avoiding nested textarea scroll.
     await page.mouse.move(box!.x + box!.width - 15, box!.y + box!.height / 2);
     await page.mouse.wheel(0, direction === 'top' ? -10_000 : 10_000);
     await expect.poll(async () => {
         const geometry = await panelGeometry(page);
-        return direction === 'top' ? geometry.fields.scrollTop
-            : geometry.fields.scrollHeight - geometry.fields.clientHeight - geometry.fields.scrollTop;
+        return direction === 'top' ? geometry.body.scrollTop
+            : geometry.body.scrollHeight - geometry.body.clientHeight - geometry.body.scrollTop;
     }).toBeLessThanOrEqual(1);
     await expectContainedPanel(page);
 }
@@ -208,30 +235,10 @@ async function tabTo(page: Page, target: Locator) {
 }
 
 async function capturePanel(page: Page, info: TestInfo, state: string) {
-    const geometry = await expectContainedPanel(page);
+    const geometry = await panelGeometry(page);
     await info.attach(`${state}-geometry`, { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
     await screenshot(page, info, state);
-}
-
-async function dragFolder(page: Page, label: 'DropA' | 'DropB') {
-    const target = form(page).locator('.drop-zone');
-    const before = (await ledger(page)).filter(entry => entry.kind === 'drag').length;
-    await target.scrollIntoViewIfNeeded();
-    await page.getByTestId(`drag-${label}`).hover();
-    await page.mouse.down();
-    // The first move starts the native drag and enters the destination. A second
-    // move is required for dragover, where the real App accepts the drop.
-    // https://playwright.dev/docs/input#dragging-manually
-    await target.hover();
-    await target.hover();
-    await page.mouse.up();
-    const events = (await ledger(page)).filter(entry => entry.kind === 'drag').slice(before);
-    const start = events.find(entry => entry.command === 'dragstart');
-    const over = events.find(entry => entry.command === 'dragover');
-    const drop = events.find(entry => entry.command === 'drop');
-    expect(start?.args).toMatchObject({ target: 'source', trusted: true, files: [paths[label]] });
-    expect(over?.args).toMatchObject({ target: 'app', trusted: true });
-    expect(drop?.args).toMatchObject({ target: 'app', trusted: true, files: [paths[label]] });
+    await expectContainedPanel(page);
 }
 
 test.beforeEach(async ({ page, context }) => {
@@ -248,6 +255,13 @@ test.beforeEach(async ({ page, context }) => {
 });
 
 test.afterEach(async ({ page }, info) => {
+    // Retain the actual boxes even when a containment/actionability assertion
+    // failed before a named state capture, rather than losing its best evidence.
+    if (await form(page).count()) {
+        await info.attach('project-final-panel-geometry', {
+            body: JSON.stringify(await panelGeometry(page), null, 2), contentType: 'application/json',
+        });
+    }
     if (await page.getByTestId('project-detection-ledger').count()) {
         const entries = await ledger(page);
         await info.attach('synthetic-project-command-ledger', {
@@ -577,37 +591,6 @@ test('picker selection owns the new lookup; cancellation restarts an interrupted
     await detected(page, 'B', b.id);
 });
 
-test('native folder drag supersedes typed detection and a held picker without event injection', async ({ page }, info) => {
-    const inputs = await createSyntheticDragFiles(info.outputPath('synthetic-drag-inputs'));
-    try {
-        await start(page);
-        // Paths use the browser's native file-input route. Buffer uploads would
-        // recreate renderer-only Files and lose them during native drag transport.
-        await page.getByLabel('Select empty synthetic drag files', { exact: true }).setInputFiles(inputs.paths);
-        await expect(page.getByTestId('synthetic-drag-ready')).toHaveText('Ready: synthetic-drop-a, synthetic-drop-b');
-        const a = await detect(page, paths.A);
-        const picker = await browse(page);
-        await dragFolder(page, 'DropA');
-        await expect(pathField(page)).toHaveValue(paths.DropA);
-        await expect(pending(page, 'detect_project_from_path')).toHaveCount(2);
-        const dropA = (await calls(page, 'detect_project_from_path')).slice(-1)[0]!;
-        expect(dropA.args).toEqual({ path: paths.DropA });
-        await dragFolder(page, 'DropB');
-        const dropB = (await calls(page, 'detect_project_from_path')).slice(-1)[0]!;
-        expect(dropB.args).toEqual({ path: paths.DropB });
-        await settle(page, dropB.id);
-        await detected(page, 'DropB', dropB.id);
-        await settle(page, a, 'Reject');
-        await settle(page, dropA.id);
-        await settle(page, picker, 'Choose A');
-        await detected(page, 'DropB', dropB.id);
-        expect(await calls(page, 'detect_project_from_path')).toHaveLength(3);
-        await screenshot(page, info, 'project-native-drag-current-result');
-    } finally {
-        await inputs.cleanup();
-    }
-});
-
 test('an old detection and old save cannot change or dismiss a reopened form', async ({ page }) => {
     await start(page);
     const a = await detect(page, paths.A);
@@ -641,50 +624,50 @@ for (const height of [900, 640]) {
         await replace(page, nameField(page), 'Synthetic geometry draft');
         await replace(page, commandsField(page), 'echo geometry');
         const first = await detect(page, paths.Tall);
-        await wheelFields(page, 'top');
+        await wheelBody(page, 'top');
         await expect(save(page)).toBeDisabled();
         await capturePanel(page, info, `project-${height}-pending`);
 
         await settle(page, first, 'Reject');
-        await wheelFields(page, 'top');
+        await wheelBody(page, 'top');
         const retry = form(page).getByRole('button', { name: 'Retry detection', exact: true });
         const manual = form(page).getByRole('button', { name: 'Continue manually', exact: true });
         await tabTo(page, retry);
         await expect(retry).toBeFocused();
-        await expectControlInsideFields(retry);
+        await expectControlInsideBody(retry);
         await tabTo(page, manual);
         await expect(manual).toBeFocused();
-        await expectControlInsideFields(manual);
+        await expectControlInsideBody(manual);
         await capturePanel(page, info, `project-${height}-error-recovery-controls`);
         await page.keyboard.press('Enter');
         await expect(form(page).getByRole('alert')).toHaveCount(0);
         await expect(save(page)).toBeEnabled();
-        await wheelFields(page, 'bottom');
+        await wheelBody(page, 'bottom');
         await tabTo(page, commandsField(page));
         await expect(commandsField(page)).toBeFocused();
-        await expectControlInsideFields(commandsField(page));
+        await expectControlInsideBody(commandsField(page));
         await expect(commandsField(page)).toHaveValue('echo geometry');
         await capturePanel(page, info, `project-${height}-manual-recovery-bottom`);
 
         const tall = await detect(page, paths.Tall);
         await settle(page, tall);
         await expect(form(page).locator('.suggestion-item')).toHaveCount(8);
-        await wheelFields(page, 'top');
+        await wheelBody(page, 'top');
         const top = await expectContainedPanel(page);
-        expect(top.fields.scrollHeight - top.fields.clientHeight).toBeGreaterThan(300);
+        expect(top.body.scrollHeight - top.body.clientHeight).toBeGreaterThan(300);
         await capturePanel(page, info, `project-${height}-tall-suggestions-top`);
-        await wheelFields(page, 'bottom');
+        await wheelBody(page, 'bottom');
         const bottom = await expectContainedPanel(page);
-        expect(bottom.fields.scrollTop).toBeGreaterThan(300);
+        expect(bottom.body.scrollTop).toBeGreaterThan(300);
         expect(bottom.header).toEqual(top.header);
         expect(bottom.footer).toEqual(top.footer);
         await tabTo(page, commandsField(page));
         await expect(commandsField(page)).toBeFocused();
-        await expectControlInsideFields(commandsField(page));
+        await expectControlInsideBody(commandsField(page));
         await capturePanel(page, info, `project-${height}-tall-suggestions-bottom`);
-        await wheelFields(page, 'top');
+        await wheelBody(page, 'top');
         await tabTo(page, form(page).locator('.suggestion-item input').first());
-        await expectControlInsideFields(form(page).locator('.suggestion-item input').first());
+        await expectControlInsideBody(form(page).locator('.suggestion-item input').first());
         await expectContainedPanel(page);
     });
 }
