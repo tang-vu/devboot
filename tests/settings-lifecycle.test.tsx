@@ -266,7 +266,10 @@ describe('Settings lifecycle with a synthetic bridge', () => {
         fireEvent.click(screen.getByRole('switch', { name: 'Show notifications' }));
         save();
         await settle(calls('update_settings')[1], undefined, 'Second config write failed');
-        expect(within(screen.getByRole('dialog')).getAllByRole('alert')).toHaveLength(2);
+        const notices = within(screen.getByRole('dialog')).getAllByRole('alert');
+        expect(notices).toHaveLength(2);
+        expect(notices[0].textContent).toContain('Settings save was not confirmed');
+        expect(notices[1].textContent).toContain('Last confirmed preference save');
         dismiss('Cancel');
         openSettings();
         expectDraft({ ...saved, theme: 'light' });

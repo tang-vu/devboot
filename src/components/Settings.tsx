@@ -77,7 +77,9 @@ export function Settings({
                         <button className="btn btn-secondary" onClick={onRetryLoad} disabled={loading}>Retry loading settings</button>
                     </div>}
                     {saveError && <p className="settings-notice" role="alert">{saveError}</p>}
-                    {startupError && <p className="settings-notice" role="alert">{startupError}</p>}
+                    {startupError && <p className="settings-notice" role="alert">
+                        <strong>Last confirmed preference save</strong><br />{startupError}
+                    </p>}
                     {saving && <p role="status">Saving settings... Closing this window does not cancel the save.</p>}
                     {localSettings && !loading && !loadError && <fieldset className="settings-preferences" disabled={saving}>
                     <div className="settings-section">

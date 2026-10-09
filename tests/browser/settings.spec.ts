@@ -87,6 +87,8 @@ async function expectFrozen(page: Page, expected: Settings) {
 }
 
 async function screenshot(page: Page, info: TestInfo, name: string) {
+    // Let the real transient notification expire so it cannot obscure the retained notice.
+    await expect(page.locator('.toast-close')).toHaveCount(0, { timeout: 10_000 });
     await info.attach(name, { body: await page.screenshot(), contentType: 'image/png' });
 }
 
@@ -239,6 +241,36 @@ test('startup failure preserves saved preferences and its warning across reopen 
     await expect(dialog(page).getByRole('alert')).toHaveCount(0);
     await expectDraft(page, draft);
     await screenshot(page, info, 'settings-recovered-startup');
+});
+
+test('a newer unconfirmed draft stays distinct from the last confirmed save with a startup warning', async ({ page }, info) => {
+    await start(page);
+    await button(page, 'Light').click();
+    const confirmed = { ...saved, theme: 'light' };
+    await button(page, 'Save Changes').click();
+    await settle(page, 'update_settings');
+    await settle(page, 'disable_auto_start', 'Reject');
+    await dialog(page).getByRole('switch', { name: 'Show notifications', exact: true }).click();
+    const attempted = { ...confirmed, show_notifications: true };
+    await button(page, 'Save Changes').click();
+    await settle(page, 'update_settings', 'Reject');
+    const notices = dialog(page).getByRole('alert');
+    await expect(notices).toHaveCount(2);
+    await expect(notices.nth(0)).toContainText('Settings save was not confirmed. These are your attempted changes');
+    await expect(notices.nth(1)).toContainText('Last confirmed preference save');
+    await expect(notices.nth(1)).toContainText('Preferences were saved, but the Windows startup update was not confirmed.');
+    await expectDraft(page, attempted);
+    await notices.first().scrollIntoViewIfNeeded();
+    await screenshot(page, info, 'settings-current-draft-and-earlier-startup-warning');
+    await expectCalls(page, [
+        call('update_settings', { settings: confirmed }), call('disable_auto_start'),
+        call('update_settings', { settings: attempted }),
+    ]);
+    await dismiss(page, 'Cancel');
+    await openSettings(page);
+    await expectDraft(page, confirmed);
+    await expect(dialog(page).getByRole('alert')).toContainText('Last confirmed preference save');
+    await expect(dialog(page).getByRole('alert')).toHaveCount(1);
 });
 
 for (const stage of ['preferences', 'startup']) {
