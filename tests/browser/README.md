@@ -51,6 +51,14 @@ cases attach read-only measurements and pending/error/recovery/tall-content
 screenshots at both viewport sizes. Final panel/form/body/fieldset/control measurements
 are attached even if containment or actionability fails before a state capture.
 
+Textarea access has separate pointer and keyboard checks. Native wheel scrolling
+must expose the complete textarea and its center for pointer editing. Native Tab
+must focus an unobscured text line and support actual editing and restoration. A hosted run
+failed the earlier expectation that Tab would expose every empty textarea row:
+Chromium kept the focused first line visible while lower rows remained clipped.
+The suite retains full-control bounds and hit checks before and after wheel
+scrolling, plus independent first-line geometry and exact keyboard edit checks.
+
 OS file-drop transport is not covered by this browser suite. The hosted Chromium
 attempts delivered trusted drop events with an empty file list for both
 renderer-created and file-input-backed Files, so the unsupported harness was

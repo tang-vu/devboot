@@ -209,6 +209,47 @@ async function expectControlInsideBody(control: Locator) {
     expect(geometry).toEqual({ inside: true, hit: true });
 }
 
+async function expectVisibleCommandLine(page: Page, info: TestInfo, state: string) {
+    // This fixture deliberately has one line. Native Tab reveals its caret/text
+    // line, but Chromium need not reveal every empty row of the tall textarea.
+    const geometry = await commandsField(page).evaluate(element => {
+        const textarea = element as HTMLTextAreaElement;
+        const box = textarea.getBoundingClientRect();
+        const body = textarea.closest('.project-scroll-region')!.getBoundingClientRect();
+        const style = getComputedStyle(textarea);
+        const line = {
+            top: box.top + textarea.clientTop + parseFloat(style.paddingTop) - textarea.scrollTop,
+            left: box.left + textarea.clientLeft + parseFloat(style.paddingLeft) - textarea.scrollLeft,
+            width: textarea.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+            height: parseFloat(style.lineHeight),
+        };
+        const hit = document.elementFromPoint(line.left + line.width / 2, line.top + line.height / 2);
+        return {
+            line, body: { top: body.top, bottom: body.bottom, left: body.left, right: body.right },
+            focused: document.activeElement === textarea, value: textarea.value,
+            selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd,
+            inside: line.top >= body.top && line.top + line.height <= body.bottom
+                && line.left >= body.left && line.left + line.width <= body.right,
+            hit: hit === textarea,
+        };
+    });
+    await info.attach(`${state}-text-line-geometry`, {
+        body: JSON.stringify(geometry, null, 2), contentType: 'application/json',
+    });
+    expect(geometry).toMatchObject({
+        focused: true, value: 'echo geometry', inside: true, hit: true,
+        selectionStart: 'echo geometry'.length, selectionEnd: 'echo geometry'.length,
+    });
+}
+
+async function editAndRestoreCommand(page: Page, character: string) {
+    await page.keyboard.press('End');
+    await page.keyboard.type(character);
+    await expect(commandsField(page)).toHaveValue(`echo geometry${character}`);
+    await page.keyboard.press('Backspace');
+    await expect(commandsField(page)).toHaveValue('echo geometry');
+}
+
 async function wheelBody(page: Page, direction: 'top' | 'bottom') {
     const body = form(page).locator('.project-scroll-region');
     const box = await body.boundingBox();
@@ -501,7 +542,7 @@ test('Continue manually preserves the entire draft, sends exact IPC, and retains
 });
 
 for (const method of ['Cancel', 'close', 'Escape', 'backdrop']) {
-    test(`${method} and reopen isolate the old detection and native picker lifetimes`, async ({ page }) => {
+    test(`${method} and reopen isolate the old detection and held picker lifetimes`, async ({ page }) => {
         await start(page);
         const a = await detect(page, paths.A);
         const picker = await browse(page);
@@ -661,13 +702,26 @@ for (const height of [900, 640]) {
         expect(bottom.body.scrollTop).toBeGreaterThan(300);
         expect(bottom.header).toEqual(top.header);
         expect(bottom.footer).toEqual(top.footer);
+        // Wheel access must expose the entire control, including its center.
+        await expectControlInsideBody(commandsField(page));
         await tabTo(page, commandsField(page));
         await expect(commandsField(page)).toBeFocused();
+        await expectVisibleCommandLine(page, info, `project-${height}-tall-tab-focus`);
+        await editAndRestoreCommand(page, 'x');
+        await capturePanel(page, info, `project-${height}-tall-tab-focus`);
+
+        // Verify full pointer access independently of Tab's caret-based scroll.
+        await wheelBody(page, 'bottom');
+        await expectControlInsideBody(commandsField(page));
+        await commandsField(page).click();
+        await expect(commandsField(page)).toBeFocused();
+        await editAndRestoreCommand(page, 'y');
         await expectControlInsideBody(commandsField(page));
         await capturePanel(page, info, `project-${height}-tall-suggestions-bottom`);
         await wheelBody(page, 'top');
         await tabTo(page, form(page).locator('.suggestion-item input').first());
         await expectControlInsideBody(form(page).locator('.suggestion-item input').first());
         await expectContainedPanel(page);
+        await dismiss(page, 'Cancel');
     });
 }
