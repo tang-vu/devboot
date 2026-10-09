@@ -4,6 +4,7 @@ export const syntheticPaths = Object.freeze({
     A: 'C:\\Synthetic\\ProjectA',
     B: 'C:\\Synthetic\\ProjectB',
     Empty: 'C:\\Synthetic\\Empty',
+    Tall: 'C:\\Synthetic\\Tall',
     Short: 'C:\\A',
     Trailing: 'C:\\Synthetic\\Trailing\\',
     DropA: 'synthetic-drop-a',
@@ -161,6 +162,11 @@ function detectionResult(entry: BridgeEntry): DetectedProjectInfo {
         suggestions: label === 'Empty' ? [] : [
             { command: `echo ${label}-${entry.id}-recommended`, description: 'Synthetic recommended command', is_recommended: true },
             { command: `echo ${label}-${entry.id}-optional`, description: 'Synthetic optional command', is_recommended: false },
+            ...(label === 'Tall' ? Array.from({ length: 6 }, (_, index) => ({
+                command: `echo Tall-${entry.id}-extra-${index + 1}`,
+                description: 'Additional synthetic suggestion for scrolling acceptance',
+                is_recommended: false,
+            })) : []),
         ],
     };
 }

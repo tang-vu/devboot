@@ -1,13 +1,18 @@
-import { StrictMode, useSyncExternalStore, type DragEvent } from 'react';
+import { StrictMode, useState, useSyncExternalStore, type DragEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '../../src/App';
 import { getLedger, observeDrag, settle, subscribe, syntheticPaths } from './project-detection-bridge';
 import './project-detection.css';
 
-function beginSyntheticDrag(event: DragEvent<HTMLDivElement>, path: string) {
-    // The native drag gesture creates its own DataTransfer; no test dispatches
-    // app events or writes application state. This File contains no disk data.
-    event.dataTransfer.items.add(new File([], path, { type: 'application/x-devboot-synthetic-folder' }));
+function beginSyntheticDrag(event: DragEvent<HTMLDivElement>, file: File | undefined) {
+    if (!file) {
+        event.preventDefault();
+        return;
+    }
+    // Preserve the browser-selected, backed File. Chromium's native drag
+    // transport drops renderer-only Files, even when the drag events are trusted.
+    // Only empty, test-owned files with the declared synthetic names are accepted.
+    event.dataTransfer.items.add(file);
     event.dataTransfer.effectAllowed = 'copy';
     observeDrag(event.nativeEvent, 'source');
 }
@@ -15,15 +20,31 @@ function beginSyntheticDrag(event: DragEvent<HTMLDivElement>, path: string) {
 function Controls() {
     const entries = useSyncExternalStore(subscribe, getLedger);
     const waiting = entries.filter(entry => entry.status === 'pending');
+    const [dragFiles, setDragFiles] = useState<Record<string, File>>({});
+    const [fileError, setFileError] = useState('');
     return (
         <aside className="project-detection-controls" aria-label="Synthetic project controls">
             <h1>DevBoot synthetic project detection QA</h1>
-            <p>Real App. In-memory folders and projects only. No native calls or processes.</p>
+            <p>Real App. Synthetic folders and projects only. Drag inputs are empty test-owned files. No native calls or processes.</p>
             <p data-testid="project-detection-denied-count">Denied actions: {entries.filter(entry => entry.kind === 'denied').length}</p>
             <h2>Native drag sources</h2>
+            <label htmlFor="synthetic-drag-files">Select empty synthetic drag files</label>
+            <input id="synthetic-drag-files" type="file" multiple onChange={event => {
+                const files = Array.from(event.currentTarget.files ?? []);
+                const allowedNames: string[] = [syntheticPaths.DropA, syntheticPaths.DropB];
+                if (files.some(file => file.size !== 0 || !allowedNames.includes(file.name))) {
+                    setFileError('Select only empty synthetic-drop-a and synthetic-drop-b test files.');
+                    setDragFiles({});
+                    return;
+                }
+                setFileError('');
+                setDragFiles(Object.fromEntries(files.map(file => [file.name, file])));
+            }} />
+            {fileError && <p role="alert">{fileError}</p>}
+            <p data-testid="synthetic-drag-ready">Ready: {Object.keys(dragFiles).join(', ') || 'none'}</p>
             {(['DropA', 'DropB'] as const).map(key => (
-                <div key={key} draggable className="synthetic-folder" data-testid={`drag-${key}`}
-                    onDragStart={event => beginSyntheticDrag(event, syntheticPaths[key])}
+                <div key={key} draggable={Boolean(dragFiles[syntheticPaths[key]])} className="synthetic-folder" data-testid={`drag-${key}`}
+                    onDragStart={event => beginSyntheticDrag(event, dragFiles[syntheticPaths[key]])}
                     onDragEnd={event => observeDrag(event.nativeEvent, 'source')}>
                     Drag synthetic folder {key}
                 </div>

@@ -24,10 +24,17 @@ restrict traffic to the fixture's loopback origin and fail unexpected requests
 or popups. No credentials or user files are used.
 
 `project-detection.spec.ts` uses mouse clicks, keyboard input and real native
-drag gestures. The draggable fixture sources create empty in-memory `File`
-objects during the browser's `dragstart`; tests never dispatch DOM events,
-inject application state, or access disk files. This checks browser drag/drop
-ownership, not native Windows folder-path extraction. Each native drag moves
+drag gestures. Its drag test creates two empty, test-owned temporary files in
+that test's output directory and selects their paths through the fixture's file
+input. The input accepts only the declared synthetic names and zero-length files.
+Native dragstart adds the browser-selected File directly to its DataTransfer;
+it never clones it. Chromium's native drag transport discarded renderer-created
+Files in the hosted run, despite trusted drag events reaching the target. The
+temporary files are removed in a `finally` block. No user files are selected,
+read, or changed; no file data leaves the isolated loopback fixture.
+
+Tests never dispatch DOM events or inject application state. This checks browser
+drag/drop ownership, not native Windows folder-path extraction. Each drag moves
 over its destination twice so the real handler receives `dragover` before the
 drop. Passive fixture observers retain trusted-event flags, coordinates, types,
 and file names; assertions require both an accepted dragover and the original
@@ -46,9 +53,16 @@ Tests cover:
 - Cancel, close, Escape, and backdrop dismissal followed by reopening; old
   picker/detection/save completions cannot mutate or dismiss the new form
 - Failed save retaining its full draft for retry and the actual App edit route
+- Panel, header, footer, and control containment at 1280×900 and 1280×640;
+  native wheel and Tab reach recovery controls and bottom fields while only the
+  fieldset scrolls, including a fixed eight-suggestion result
 
 Each test attaches its synthetic ledger; selected cases also attach current
-generation, manual edits, failure, recovery, and native drag screenshots. Run only
+generation, manual edits, failure, recovery, and native drag screenshots. Geometry
+cases attach read-only measurements and pending/error/recovery/tall-content
+screenshots at both viewport sizes. The file-input selection is test setup for
+browser drag transport; it does not test Windows Explorer or the native folder
+picker. Run only
 this suite with `npm run test:browser -- project-detection.spec.ts`. To build the
 isolated fixture without starting a browser:
 
