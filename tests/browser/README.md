@@ -1,5 +1,42 @@
 # Synthetic browser QA
 
+## Project-list loading recovery
+
+The `project-loading.html` fixture imports the real App under root StrictMode on
+loopback port 4182. Its separate bridge permits only synthetic `get_projects`,
+`get_settings`, `get_project_status`, `get_project_log_snapshot`, and the three
+known inert process listeners. Project-list, status and log reads remain pending
+until native fixture buttons resolve or reject them; every call and completion
+is retained in the JSON ledger. All mutations, native dialogs, clipboard access,
+URL opening and export object URLs are rejected. No filesystem providers,
+startup integration or process commands run. CSP and the test request guard
+restrict traffic to this fixture's origin; its Vite config removes remote fonts
+and rejects unaliased native imports.
+
+`project-loading.spec.ts` covers initial failure versus genuine empty success,
+native Tab/Enter retry, repeated pointer/keyboard activation during a pending
+retry, failed retry followed by success, stale StrictMode and unmounted reads,
+and independent status/log failures. A synthetic running status enables an
+unsent terminal draft; 121 synthetic history records and an independent capture
+warning exercise native wheel scrolling and retained line/offset measurements
+through catalog failure and recovery. All input/process mutations remain denied.
+The existing Reload logs route initiates
+refresh without introducing a production test API. Refresh-failure cases retain
+the list, terminal, independent log alert, and paused-following state, then clear
+the catalog notice on recovery. The normal/narrow cases use 1280×900 and 980×900
+viewports (1000px and 700px App widths after the 280px fixture control panel),
+with read-only containment and hit-target measurements. A long-error case also
+checks wrapping, retained terminal space and native Tab/Space recovery at
+980×640. Screenshots and the full
+synthetic ledger are attached to each relevant test result.
+
+Run with `npm run test:browser -- project-loading.spec.ts`. Build the isolated
+fixture with `npx vite build --config tests/browser/project-loading-vite.config.mjs
+--outDir /tmp/devboot-project-loading-fixture`. Discovery, type checks and build
+success are not browser acceptance. Run Chromium against the exact proposed
+source before marking this gate passed. This fixture does not establish native
+Tauri/WebView2 behavior, real configuration storage or Windows process behavior.
+
 ## Project detection ownership
 
 The separate `project-detection.html` fixture renders the actual `App`,
