@@ -112,6 +112,35 @@ async function screenshot(page: Page, info: TestInfo, title: string) {
     await info.attach(title, { body: await page.screenshot(), contentType: 'image/png' });
 }
 
+async function appearance(control: Locator) {
+    // Read-only computed styles establish that disabled state is visible, too.
+    return control.evaluate(element => {
+        const styles = getComputedStyle(element);
+        return { opacity: styles.opacity, cursor: styles.cursor };
+    });
+}
+
+async function dragFolder(page: Page, label: 'DropA' | 'DropB') {
+    const target = form(page).locator('.drop-zone');
+    const before = (await ledger(page)).filter(entry => entry.kind === 'drag').length;
+    await target.scrollIntoViewIfNeeded();
+    await page.getByTestId(`drag-${label}`).hover();
+    await page.mouse.down();
+    // The first move starts the native drag and enters the destination. A second
+    // move is required for dragover, where the real App accepts the drop.
+    // https://playwright.dev/docs/input#dragging-manually
+    await target.hover();
+    await target.hover();
+    await page.mouse.up();
+    const events = (await ledger(page)).filter(entry => entry.kind === 'drag').slice(before);
+    const start = events.find(entry => entry.command === 'dragstart');
+    const over = events.find(entry => entry.command === 'dragover');
+    const drop = events.find(entry => entry.command === 'drop');
+    expect(start?.args).toMatchObject({ target: 'source', trusted: true, files: [paths[label]] });
+    expect(over?.args).toMatchObject({ target: 'app', trusted: true });
+    expect(drop?.args).toMatchObject({ target: 'app', trusted: true, files: [paths[label]] });
+}
+
 test.beforeEach(async ({ page, context }) => {
     const failures: string[] = [];
     issues.set(page, failures);
@@ -381,13 +410,31 @@ for (const method of ['Cancel', 'close', 'Escape', 'backdrop']) {
     });
 }
 
-test('typed path supersedes a held picker, and repeated Browse cannot open duplicate pickers', async ({ page }) => {
+test('typed path supersedes a held picker, and repeated Browse cannot open duplicate pickers', async ({ page }, info) => {
     await start(page);
     const a = await detect(page, paths.A);
     await settle(page, a);
+    const browseButton = form(page).getByRole('button', { name: 'Browse', exact: true });
+    const enabledSave = await appearance(save(page));
+    const enabledBrowse = await appearance(browseButton);
     const picker = await browse(page);
     await expect(form(page).getByRole('status')).toHaveText('Choosing project folder...');
-    await expect(form(page).getByRole('button', { name: 'Browse', exact: true })).toBeDisabled();
+    await expect(browseButton).toBeDisabled();
+    await expect(save(page)).toHaveCSS('opacity', '0.5');
+    await expect(save(page)).toHaveCSS('cursor', 'not-allowed');
+    await expect(browseButton).toHaveCSS('opacity', '0.5');
+    await expect(browseButton).toHaveCSS('cursor', 'not-allowed');
+    const disabledSave = await appearance(save(page));
+    const disabledBrowse = await appearance(browseButton);
+    expect(Number(disabledSave.opacity)).toBeLessThan(Number(enabledSave.opacity));
+    expect(Number(disabledBrowse.opacity)).toBeLessThan(Number(enabledBrowse.opacity));
+    expect(disabledSave.cursor).not.toBe(enabledSave.cursor);
+    expect(disabledBrowse.cursor).not.toBe(enabledBrowse.cursor);
+    await info.attach('project-button-availability-styles', {
+        body: JSON.stringify({ enabledSave, enabledBrowse, disabledSave, disabledBrowse }, null, 2),
+        contentType: 'application/json',
+    });
+    await screenshot(page, info, 'project-pending-picker-save-lock');
     await blockedSave(page);
     // The clickable drop-zone shares Browse's duplicate guard.
     await form(page).locator('.drop-zone').click();
@@ -396,8 +443,13 @@ test('typed path supersedes a held picker, and repeated Browse cannot open dupli
     await settle(page, picker, 'Choose A');
     await expect(pathField(page)).toHaveValue(paths.B);
     await expect(form(page).getByRole('status')).toHaveText('Detecting project type...');
+    await expect(save(page)).toHaveCSS('opacity', '0.5');
+    await expect(browseButton).toHaveCSS('opacity', enabledBrowse.opacity);
+    await screenshot(page, info, 'project-pending-detection-save-lock');
     await settle(page, b);
     await detected(page, 'B', b);
+    await expect(save(page)).toHaveCSS('opacity', enabledSave.opacity);
+    await expect(save(page)).toHaveCSS('cursor', enabledSave.cursor);
     expect(await calls(page, 'detect_project_from_path')).toHaveLength(2);
 });
 
@@ -432,14 +484,12 @@ test('native folder drag supersedes typed detection and a held picker without ev
     await start(page);
     const a = await detect(page, paths.A);
     const picker = await browse(page);
-    await form(page).locator('.drop-zone').scrollIntoViewIfNeeded();
-    await page.getByTestId('drag-DropA').dragTo(form(page).locator('.drop-zone'));
+    await dragFolder(page, 'DropA');
     await expect(pathField(page)).toHaveValue(paths.DropA);
     await expect(pending(page, 'detect_project_from_path')).toHaveCount(2);
     const dropA = (await calls(page, 'detect_project_from_path')).slice(-1)[0]!;
     expect(dropA.args).toEqual({ path: paths.DropA });
-    await form(page).locator('.drop-zone').scrollIntoViewIfNeeded();
-    await page.getByTestId('drag-DropB').dragTo(form(page).locator('.drop-zone'));
+    await dragFolder(page, 'DropB');
     const dropB = (await calls(page, 'detect_project_from_path')).slice(-1)[0]!;
     expect(dropB.args).toEqual({ path: paths.DropB });
     await settle(page, dropB.id);

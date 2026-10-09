@@ -1,7 +1,7 @@
 import { StrictMode, useSyncExternalStore, type DragEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '../../src/App';
-import { getLedger, settle, subscribe, syntheticPaths } from './project-detection-bridge';
+import { getLedger, observeDrag, settle, subscribe, syntheticPaths } from './project-detection-bridge';
 import './project-detection.css';
 
 function beginSyntheticDrag(event: DragEvent<HTMLDivElement>, path: string) {
@@ -9,6 +9,7 @@ function beginSyntheticDrag(event: DragEvent<HTMLDivElement>, path: string) {
     // app events or writes application state. This File contains no disk data.
     event.dataTransfer.items.add(new File([], path, { type: 'application/x-devboot-synthetic-folder' }));
     event.dataTransfer.effectAllowed = 'copy';
+    observeDrag(event.nativeEvent, 'source');
 }
 
 function Controls() {
@@ -22,7 +23,8 @@ function Controls() {
             <h2>Native drag sources</h2>
             {(['DropA', 'DropB'] as const).map(key => (
                 <div key={key} draggable className="synthetic-folder" data-testid={`drag-${key}`}
-                    onDragStart={event => beginSyntheticDrag(event, syntheticPaths[key])}>
+                    onDragStart={event => beginSyntheticDrag(event, syntheticPaths[key])}
+                    onDragEnd={event => observeDrag(event.nativeEvent, 'source')}>
                     Drag synthetic folder {key}
                 </div>
             ))}
@@ -54,6 +56,11 @@ function Controls() {
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
         <Controls />
-        <div className="project-detection-app"><App /></div>
+        <div className="project-detection-app"
+            onDragEnterCapture={event => observeDrag(event.nativeEvent, 'app')}
+            onDragOverCapture={event => observeDrag(event.nativeEvent, 'app')}
+            onDropCapture={event => observeDrag(event.nativeEvent, 'app')}>
+            <App />
+        </div>
     </StrictMode>,
 );

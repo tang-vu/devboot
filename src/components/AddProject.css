@@ -504,3 +504,11 @@
     gap: 8px;
     margin-top: 12px;
 }
+
+.add-project-modal .btn-primary:disabled,
+.add-project-modal .browse-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}

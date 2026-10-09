@@ -27,7 +27,12 @@ or popups. No credentials or user files are used.
 drag gestures. The draggable fixture sources create empty in-memory `File`
 objects during the browser's `dragstart`; tests never dispatch DOM events,
 inject application state, or access disk files. This checks browser drag/drop
-ownership, not native Windows folder-path extraction. Tests cover:
+ownership, not native Windows folder-path extraction. Each native drag moves
+over its destination twice so the real handler receives `dragover` before the
+drop. Passive fixture observers retain trusted-event flags, coordinates, types,
+and file names; assertions require both an accepted dragover and the original
+file at drop, making geometry and file-transport failures distinguishable.
+Tests cover:
 
 - Older success/failure before and after a newer result; A → B → A ownership
 - Debounce cancellation, path clearing, shorter paths, trailing separators, and
