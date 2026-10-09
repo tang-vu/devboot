@@ -14,6 +14,9 @@ function AppContent() {
   const {
     projects,
     loading,
+    projectLoadError,
+    refreshingProjects,
+    retryProjects,
     statuses,
     logViews,
     logErrors,
@@ -50,10 +53,10 @@ function AppContent() {
   // Get selected project
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
-  // Auto-select first project if none selected
+  // A refreshed catalog may no longer contain the old selection.
   useEffect(() => {
-    if (!selectedProjectId && projects.length > 0) {
-      setSelectedProjectId(projects[0].id);
+    if (!projects.some(project => project.id === selectedProjectId)) {
+      setSelectedProjectId(projects[0]?.id ?? null);
     }
   }, [selectedProjectId, projects]);
 
@@ -228,6 +231,18 @@ function AppContent() {
       />
 
       <main className="main-content">
+        {projectLoadError && (
+          <div className="project-load-notice" role="alert" aria-label="Project list unavailable" aria-busy={refreshingProjects}>
+            <p>{projectLoadError}</p>
+            <p>{projects.length > 0
+              ? 'Showing the last loaded project list. Retry to refresh it.'
+              : 'Retry to load your saved projects.'}</p>
+            <button className="btn btn-primary" disabled={refreshingProjects} onClick={() => { void retryProjects(); }}>
+              Retry projects
+            </button>
+            {refreshingProjects && <span role="status">Retrying project load...</span>}
+          </div>
+        )}
         {selectedProject ? (
           <Terminal
             key={selectedProject.id}
@@ -246,7 +261,7 @@ function AppContent() {
             onStart={() => handleStartProject(selectedProject.id)}
             isRunning={statuses[selectedProject.id] === 'running'}
           />
-        ) : (
+        ) : !projectLoadError && (
           <div className="empty-state">
             <div className="empty-content">
               <span className="empty-icon">📂</span>

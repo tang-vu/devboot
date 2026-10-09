@@ -1,0 +1,23 @@
+.project-loading-controls {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 280px;
+    overflow: auto;
+    padding: 16px;
+    background: #101321;
+    border-right: 1px solid #535b78;
+}
+.project-loading-controls h1 { font-size: 18px; margin-bottom: 12px; }
+.project-loading-controls h2 { font-size: 15px; margin: 18px 0 8px; }
+.project-loading-controls h3 { font-size: 13px; margin-bottom: 6px; }
+.project-loading-controls p { font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.project-loading-controls section { margin: 12px 0; }
+.project-loading-controls button {
+    display: block; width: 100%; margin: 6px 0; padding: 7px;
+    color: #fff; background: #283356; border: 1px solid #7181b4;
+    border-radius: 6px; cursor: pointer;
+}
+.project-loading-controls pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.project-loading-app { margin-left: 280px; }
+.project-loading-app.narrow { width: 700px; }
+.project-loading-app .modal-overlay { left: 280px; }

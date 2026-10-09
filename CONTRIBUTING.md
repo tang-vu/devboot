@@ -142,3 +142,11 @@ manual/template/suggestion edits, recoverable failures, save gating, and exact
 add/update payloads. The separate project-detection browser fixture covers native
 keyboard and mouse interactions using an isolated in-memory bridge. These tests
 do not open native folder dialogs, inspect real directories, or start processes.
+
+Project-loading tests distinguish an unavailable catalog from a confirmed empty
+one, exercise explicit retry and current-request ownership, and retain terminal,
+settings, and project-edit drafts during failed refreshes. Successful catalog
+replacement preserves a still-present selection or selects an available project.
+Status and log
+hydration failures are checked separately from catalog failures. These tests use
+deferred synthetic reads and never change saved projects or start processes.

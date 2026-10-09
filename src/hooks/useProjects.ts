@@ -11,6 +11,8 @@ interface CrashPayload { project_id: string; restart_count: number; will_restart
 export function useProjects() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
+    const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
+    const [refreshingProjects, setRefreshingProjects] = useState(true);
     const [statuses, setStatuses] = useState<Record<string, ProcessStatus>>({});
     const [logStates, setLogStates] = useState<Record<string, ProjectLogs>>({});
     const [logListenerFailed, setLogListenerFailed] = useState(false);
@@ -27,6 +29,7 @@ export function useProjects() {
     }, [replaceLogStates]);
     const readLifetimeRef = useRef<object | null>(null);
     const refreshRevisionRef = useRef(0);
+    const pendingRefreshRef = useRef<object | null>(null);
     const statusRevisionsRef = useRef(new Map<string, number>());
     const knownProjectsRef = useRef<Set<string> | null>(null);
     const retiredProjectsRef = useRef(new Set<string>());
@@ -71,8 +74,12 @@ export function useProjects() {
         const lifetime = readLifetimeRef.current;
         if (!lifetime) return;
         const revision = ++refreshRevisionRef.current;
+        const request = {};
+        pendingRefreshRef.current = request;
+        setRefreshingProjects(true);
         const ready = logReadyRef.current;
         const isCurrent = () => readLifetimeRef.current === lifetime && refreshRevisionRef.current === revision;
+        let catalogAccepted = false;
         try {
             const data = await invoke<Project[]>('get_projects');
             if (!isCurrent()) return;
@@ -80,6 +87,8 @@ export function useProjects() {
             const current = data.filter(project => !retiredProjectsRef.current.has(project.id));
             knownProjectsRef.current = new Set(current.map(project => project.id));
             setProjects(current);
+            catalogAccepted = true;
+            setProjectLoadError(null);
             replaceLogStates(Object.fromEntries(Object.entries(logStatesRef.current).filter(([id]) => acceptsProject(id))));
             setLogReadErrors(prev => Object.fromEntries(Object.entries(prev).filter(([id]) => acceptsProject(id))));
 
@@ -101,11 +110,27 @@ export function useProjects() {
                 }
             }));
         } catch (error) {
-            if (isCurrent()) console.error('Failed to load projects:', error);
+            if (isCurrent()) {
+                // Status hydration can fail after the catalog has loaded. It
+                // must not turn a valid project list into a catalog error.
+                if (!catalogAccepted) setProjectLoadError(`Project list could not be loaded. ${error}`);
+                console.error(catalogAccepted ? 'Failed to load project statuses:' : 'Failed to load projects:', error);
+            }
         } finally {
-            if (isCurrent()) setLoading(false);
+            if (isCurrent()) {
+                if (pendingRefreshRef.current === request) pendingRefreshRef.current = null;
+                setRefreshingProjects(false);
+                setLoading(false);
+            }
         }
     }, [acceptsProject, hydrateProjectLogs, replaceLogStates]);
+
+    // Explicit Retry is single-flight even before React disables its button.
+    // Other refresh callers retain their existing latest-request ownership.
+    const retryProjects = useCallback(() => {
+        if (pendingRefreshRef.current) return;
+        return loadProjects();
+    }, [loadProjects]);
 
     useEffect(() => {
         let active = true;
@@ -163,7 +188,12 @@ export function useProjects() {
         const lifetime = {};
         readLifetimeRef.current = lifetime;
         void loadProjects();
-        return () => { if (readLifetimeRef.current === lifetime) readLifetimeRef.current = null; };
+        return () => {
+            if (readLifetimeRef.current === lifetime) {
+                readLifetimeRef.current = null;
+                pendingRefreshRef.current = null;
+            }
+        };
     }, [loadProjects]);
 
     const addProject = async (name: string, path: string, commands: string[], options: ProjectOptions, envVars: Record<string, string> = {}) => {
@@ -206,7 +236,8 @@ export function useProjects() {
         if (!lifetime || readLifetimeRef.current !== lifetime || !acceptsProject(projectId)) return;
         updateLogs(projectId, state => receiveLogEvent(state, { kind: 'clear', snapshot }));
     };
-    return { projects, loading, statuses, logs, logViews, logErrors, addProject, updateProject, deleteProject,
+    return { projects, loading, projectLoadError, refreshingProjects, retryProjects,
+        statuses, logs, logViews, logErrors, addProject, updateProject, deleteProject,
         startProject, stopProject, restartProject, clearLogs, refreshProjects: loadProjects };
 }
 
