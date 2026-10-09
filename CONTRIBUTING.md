@@ -126,3 +126,11 @@ manifest in only the generated test executables, and runs each one. This handles
 [Tauri's Windows test-loader issue](https://github.com/tauri-apps/tauri/issues/13419)
 without changing the application's build or manifest. Compilation, manifest, or
 test failures fail the command.
+
+Settings lifecycle tests render the real App, Settings dialog, and settings hook
+with deferred synthetic IPC reads and writes. They cover load/retry, StrictMode
+read ownership, every dismissal path, failed draft recovery, duplicate save
+prevention across reopen, and partial startup failures. The full combination of
+supported choices verifies exact preference payloads and the matching startup
+command order. These tests do not invoke Tauri or change real settings, startup
+entries, user projects, or processes.

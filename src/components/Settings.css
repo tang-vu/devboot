@@ -364,3 +364,42 @@
     color: var(--accent-primary);
     background: rgba(99, 102, 241, 0.1);
 }
+.settings-preferences {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+}
+
+.settings-preferences:disabled {
+    opacity: 0.65;
+}
+
+.settings-modal .toggle {
+    border: 0;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.settings-modal button:disabled {
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.settings-modal .btn-primary:disabled {
+    opacity: 0.55;
+}
+
+.settings-notice {
+    padding: 12px;
+    border: 1px solid #d97706;
+    border-radius: 8px;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+}
+
+.settings-modal button:focus-visible {
+    outline: 2px solid #a5b4fc;
+    outline-offset: 3px;
+}

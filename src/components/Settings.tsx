@@ -1,29 +1,55 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Settings as SettingsType } from '../types';
 import './Settings.css';
 
 interface SettingsProps {
-    settings: SettingsType;
-    onSave: (settings: SettingsType) => void;
+    settings: SettingsType | null;
+    loading: boolean;
+    loadError: string | null;
+    saving: boolean;
+    saveError: string | null;
+    startupError: string | null;
+    onRetryLoad: () => void;
+    onSave: (settings: SettingsType) => Promise<void>;
     onClose: () => void;
 }
 
 const WALLET_ADDRESS = '0x051BF9b67aC43BbB461A33E13c21218f304E31BB';
 
-export function Settings({ settings, onSave, onClose }: SettingsProps) {
-    const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
+export function Settings({
+    settings, loading, loadError, saving, saveError, startupError, onRetryLoad, onSave, onClose,
+}: SettingsProps) {
+    const [localSettings, setLocalSettings] = useState<SettingsType | null>(settings);
     const [copied, setCopied] = useState(false);
+    const lifetimeRef = useRef<object | null>(null);
+    const submittingRef = useRef(false);
 
-    const handleToggle = (key: keyof SettingsType) => {
-        setLocalSettings(prev => ({
-            ...prev,
-            [key]: !prev[key],
-        }));
+    useEffect(() => {
+        const lifetime = {};
+        lifetimeRef.current = lifetime;
+        return () => { if (lifetimeRef.current === lifetime) lifetimeRef.current = null; };
+    }, []);
+
+    // Initialize only after a successful load. Later results cannot replace a draft.
+    useEffect(() => { setLocalSettings(current => current ?? settings); }, [settings]);
+
+    const handleToggle = (key: 'auto_start_with_windows' | 'minimize_to_tray' | 'show_notifications') => {
+        if (loading || saving || submittingRef.current) return;
+        setLocalSettings(prev => prev && ({ ...prev, [key]: !prev[key] }));
     };
 
-    const handleSave = () => {
-        onSave(localSettings);
-        onClose();
+    const handleSave = async () => {
+        if (!localSettings || loading || saving || submittingRef.current) return;
+        const lifetime = lifetimeRef.current;
+        submittingRef.current = true;
+        try {
+            await onSave({ ...localSettings });
+            if (lifetimeRef.current === lifetime) onClose();
+        } catch {
+            // The shared save error also remains visible if this dialog was reopened.
+        } finally {
+            submittingRef.current = false;
+        }
     };
 
     const copyWallet = () => {
@@ -38,13 +64,24 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>Settings</h2>
-                    <button className="close-btn" onClick={onClose}>x</button>
+                    <h2 id="settings-title">Settings</h2>
+                    <button className="close-btn" aria-label="Close Settings" onClick={onClose}>x</button>
                 </div>
 
                 <div className="modal-body">
+                    {loading && <p role="status">Loading settings...</p>}
+                    {loadError && <div className="settings-notice" role="alert">
+                        <p>{loadError}</p>
+                        <button className="btn btn-secondary" onClick={onRetryLoad} disabled={loading}>Retry loading settings</button>
+                    </div>}
+                    {saveError && <p className="settings-notice" role="alert">{saveError}</p>}
+                    {startupError && <p className="settings-notice" role="alert">
+                        <strong>Last confirmed preference save</strong><br />{startupError}
+                    </p>}
+                    {saving && <p role="status">Saving settings... Closing this window does not cancel the save.</p>}
+                    {localSettings && !loading && !loadError && <fieldset className="settings-preferences" disabled={saving}>
                     <div className="settings-section">
                         <h3>Startup</h3>
                         <label className="toggle-item">
@@ -52,12 +89,12 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
                                 <span className="toggle-icon">{"[>]"}</span>
                                 Auto-start with Windows
                             </span>
-                            <div
+                            <button type="button" role="switch" aria-label="Auto-start with Windows" aria-checked={localSettings.auto_start_with_windows}
                                 className={`toggle ${localSettings.auto_start_with_windows ? 'active' : ''}`}
                                 onClick={() => handleToggle('auto_start_with_windows')}
                             >
-                                <div className="toggle-knob" />
-                            </div>
+                                <span className="toggle-knob" />
+                            </button>
                         </label>
 
                         <label className="toggle-item">
@@ -65,12 +102,12 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
                                 <span className="toggle-icon">[_]</span>
                                 Minimize to system tray
                             </span>
-                            <div
+                            <button type="button" role="switch" aria-label="Minimize to system tray" aria-checked={localSettings.minimize_to_tray}
                                 className={`toggle ${localSettings.minimize_to_tray ? 'active' : ''}`}
                                 onClick={() => handleToggle('minimize_to_tray')}
                             >
-                                <div className="toggle-knob" />
-                            </div>
+                                <span className="toggle-knob" />
+                            </button>
                         </label>
                     </div>
 
@@ -81,12 +118,12 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
                                 <span className="toggle-icon">[!]</span>
                                 Show notifications
                             </span>
-                            <div
+                            <button type="button" role="switch" aria-label="Show notifications" aria-checked={localSettings.show_notifications}
                                 className={`toggle ${localSettings.show_notifications ? 'active' : ''}`}
                                 onClick={() => handleToggle('show_notifications')}
                             >
-                                <div className="toggle-knob" />
-                            </div>
+                                <span className="toggle-knob" />
+                            </button>
                         </label>
                     </div>
 
@@ -95,18 +132,20 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
                         <div className="theme-selector">
                             <button
                                 className={`theme-btn ${localSettings.theme === 'dark' ? 'active' : ''}`}
-                                onClick={() => setLocalSettings(prev => ({ ...prev, theme: 'dark' }))}
+                                onClick={() => setLocalSettings(prev => prev && ({ ...prev, theme: 'dark' }))}
                             >
                                 Dark
                             </button>
                             <button
                                 className={`theme-btn ${localSettings.theme === 'light' ? 'active' : ''}`}
-                                onClick={() => setLocalSettings(prev => ({ ...prev, theme: 'light' }))}
+                                onClick={() => setLocalSettings(prev => prev && ({ ...prev, theme: 'light' }))}
                             >
                                 Light
                             </button>
                         </div>
                     </div>
+
+                    </fieldset>}
 
                     <div className="settings-section support-section">
                         <h3>Support & About</h3>
@@ -150,7 +189,7 @@ export function Settings({ settings, onSave, onClose }: SettingsProps) {
                     <button className="btn btn-secondary" onClick={onClose}>
                         Cancel
                     </button>
-                    <button className="btn btn-primary" onClick={handleSave}>
+                    <button className="btn btn-primary" onClick={handleSave} disabled={!localSettings || loading || !!loadError || saving}>
                         Save Changes
                     </button>
                 </div>

@@ -1,4 +1,43 @@
-# Real-browser log-follow QA
+# Synthetic browser QA
+
+## Settings lifecycle
+
+The separate `settings.html` fixture imports the actual `App`, `Settings`, and
+`useSettings`, with the same root StrictMode replay as the app entry point. It
+runs on loopback port 4180 using `settings-vite.config.mjs`; the log-follow server
+and its deny-all bridge remain separate and unchanged.
+
+The Settings fixture aliases core, event, and dialog APIs to a strict in-memory
+bridge. It returns empty projects, registers inert listeners only for the three
+known process event names, and holds settings reads, writes, and startup requests
+as promises. Native fixture buttons explicitly resolve or reject each promise.
+Every call and payload remains in the attached JSON ledger, including rejected
+and denied requests. The fixture rejects any unexpected command or payload,
+native dialog, clipboard write, or URL opening; no operation reaches Tauri,
+configuration files, the registry, startup integration, or a project process.
+Its isolated Vite configuration removes the App CSS remote-font import, rejects
+unaliased Tauri imports, and serves a page with a restrictive CSP. Browser tests
+also block and fail unexpected network requests or popups.
+
+`settings.spec.ts` uses native mouse and keyboard input to cover:
+
+- Loading and failure preventing edits/save, followed by explicit read retry
+- Keyboard focus, Space/Enter toggles, and exact selected preference values
+- Preference-write failure/retry with the exact payload and no early startup call
+- Partial startup failure, warning persistence across reopening, and recovery
+- Cancel, close button, Escape, and backdrop dismissal during both pending stages
+- Frozen fields and duplicate submission prevention across dismissal/reopening
+- An old save completion leaving a new dialog open; full success closing the
+  dialog that submitted that save
+
+Hosted Chromium runs attach loading, read-error, preference-write-error,
+partial-startup-error, and recovered screenshots, plus each test's full synthetic
+command ledger. The existing pinned Playwright dependency and CI browser command
+discover both suites. Type checking, building this fixture, or test discovery
+alone does not establish browser acceptance. These tests do not establish native
+Windows startup behavior or real settings persistence.
+
+## Log-follow fixture
 
 This fixture imports the actual `Terminal` and its CSS. It uses synthetic
 `LogRecord` arrays with session and sequence identities. All Tauri `invoke`
@@ -29,8 +68,8 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The suite starts its own loopback Vite process, so stop a manually started copy
-first. Tests use real mouse wheel, native scrollbar drag, and keyboard input;
+The suite starts its own isolated loopback Vite servers, so stop manually started
+copies first. Tests use real mouse wheel, native scrollbar drag, and keyboard input;
 page evaluation reads DOM geometry only. It writes an HTML report to
 `playwright-report` and attaches selected screenshots and geometry JSON. Failures
 also retain a trace and screenshot in `test-results`. CI must run these tests on

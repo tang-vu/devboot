@@ -211,37 +211,83 @@ export function useProjects() {
 }
 
 export function useSettings() {
-    const [settings, setSettings] = useState<Settings>({
-        auto_start_with_windows: true,
-        theme: 'dark',
-        minimize_to_tray: true,
-        show_notifications: true,
-    });
+    const [settings, setSettings] = useState<Settings | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [savingSettings, setSavingSettings] = useState<Settings | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [startupError, setStartupError] = useState<string | null>(null);
+    const [failedSettings, setFailedSettings] = useState<Settings | null>(null);
+    const lifetimeRef = useRef<object | null>(null);
+    const readRevisionRef = useRef(0);
+    const savingRef = useRef(false);
 
     const loadSettings = useCallback(async () => {
+        const lifetime = lifetimeRef.current;
+        if (!lifetime || savingRef.current) return;
+        const revision = ++readRevisionRef.current;
+        const isCurrent = () => lifetimeRef.current === lifetime && readRevisionRef.current === revision;
+        setLoading(true);
+        setLoadError(null);
         try {
             const data = await invoke<Settings>('get_settings');
-            setSettings(data);
+            if (isCurrent()) setSettings(data);
         } catch (error) {
-            console.error('Failed to load settings:', error);
+            if (isCurrent()) setLoadError(`Settings could not be loaded. Retry to edit your preferences. ${error}`);
+        } finally {
+            if (isCurrent()) setLoading(false);
         }
     }, []);
 
     const updateSettings = async (newSettings: Settings) => {
-        await invoke('update_settings', { settings: newSettings });
-        setSettings(newSettings);
-
-        // Handle auto-start setting
-        if (newSettings.auto_start_with_windows) {
-            await invoke('enable_auto_start');
-        } else {
-            await invoke('disable_auto_start');
+        if (!settings || loading) throw new Error('Load settings before saving.');
+        if (savingRef.current) throw new Error('A settings save is already in progress.');
+        const lifetime = lifetimeRef.current;
+        const draft = { ...newSettings };
+        savingRef.current = true;
+        ++readRevisionRef.current;
+        setSavingSettings(draft);
+        setSaveError(null);
+        setFailedSettings(null);
+        let preferencesSaved = false;
+        try {
+            await invoke('update_settings', { settings: draft });
+            preferencesSaved = true;
+            // The preferences are persisted even if the subsequent startup action fails.
+            if (lifetimeRef.current === lifetime) setSettings(draft);
+            await invoke(draft.auto_start_with_windows ? 'enable_auto_start' : 'disable_auto_start');
+            if (lifetimeRef.current === lifetime) setStartupError(null);
+        } catch (error) {
+            const message = preferencesSaved
+                ? `Preferences were saved, but the Windows startup update was not confirmed. Retry Save Changes to apply your startup choice. ${error}`
+                : `Settings save was not confirmed. These are your attempted changes; retry Save Changes or Cancel to discard them. ${error}`;
+            if (lifetimeRef.current === lifetime) {
+                if (preferencesSaved) setStartupError(message);
+                else {
+                    setSaveError(message);
+                    setFailedSettings(draft);
+                }
+            }
+            throw new Error(message);
+        } finally {
+            savingRef.current = false;
+            if (lifetimeRef.current === lifetime) setSavingSettings(null);
         }
     };
 
     useEffect(() => {
-        loadSettings();
+        const lifetime = {};
+        lifetimeRef.current = lifetime;
+        void loadSettings();
+        return () => { if (lifetimeRef.current === lifetime) lifetimeRef.current = null; };
     }, [loadSettings]);
 
-    return { settings, updateSettings };
+    const dismissSaveError = useCallback(() => {
+        if (savingRef.current) return;
+        setSaveError(null);
+        setFailedSettings(null);
+    }, []);
+
+    return { settings, loading, loadError, savingSettings, failedSettings, saveError, startupError, updateSettings,
+        retryLoad: loadSettings, dismissSaveError };
 }

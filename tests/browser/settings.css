@@ -1,0 +1,30 @@
+.settings-fixture-controls {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 330px;
+    overflow: auto;
+    padding: 20px;
+    background: #101321;
+    border-right: 1px solid #535b78;
+}
+
+.settings-fixture-controls h1 { font-size: 19px; margin-bottom: 12px; }
+.settings-fixture-controls h2 { font-size: 16px; margin: 18px 0 8px; }
+.settings-fixture-controls h3 { font-size: 14px; margin-bottom: 6px; }
+.settings-fixture-controls p { font-size: 13px; margin-bottom: 10px; }
+.settings-fixture-controls section { margin: 12px 0; }
+.settings-fixture-controls button {
+    display: block;
+    width: 100%;
+    margin: 6px 0;
+    padding: 9px;
+    color: #fff;
+    background: #283356;
+    border: 1px solid #7181b4;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.settings-fixture-controls details { margin-top: 16px; }
+.settings-fixture-controls pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.settings-fixture-app { margin-left: 330px; }
+.settings-fixture-app .modal-overlay { left: 330px; }
