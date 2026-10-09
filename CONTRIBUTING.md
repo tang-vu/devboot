@@ -134,3 +134,11 @@ prevention across reopen, and partial startup failures. The full combination of
 supported choices verifies exact preference payloads and the matching startup
 command order. These tests do not invoke Tauri or change real settings, startup
 entries, user projects, or processes.
+
+Project detection tests render the real form and App with deferred synthetic
+folder pickers, detector responses, and saves. They cover reordered results,
+A-to-B-to-A selection, typed/browse/drop ownership, debounce and dismissal,
+manual/template/suggestion edits, recoverable failures, save gating, and exact
+add/update payloads. The separate project-detection browser fixture covers native
+keyboard and mouse interactions using an isolated in-memory bridge. These tests
+do not open native folder dialogs, inspect real directories, or start processes.

@@ -1,5 +1,62 @@
 # Synthetic browser QA
 
+## Project detection ownership
+
+The separate `project-detection.html` fixture renders the actual `App`,
+`AddProject`, and project hook under root StrictMode. It listens on loopback port
+4181 using `project-detection-vite.config.mjs`, with a separate bridge and CSP.
+The log-follow and Settings fixtures retain their independent bridges and ports.
+
+Only a fixed set of synthetic folder names is accepted. Settings and the initial
+empty project list are in memory; folder pickers, detection, add, and update
+requests are held promises settled by native fixture buttons. Successful add and
+update requests change only the fixture-owned project list. Any resulting status
+and log reads return synthetic stopped/empty data. The retained JSON ledger
+captures every request, payload, completion, and denied operation. Per-operation
+names and commands distinguish an old result for A from a new result for A.
+
+The strict bridge rejects unknown commands, unexpected keys, non-synthetic
+paths/project IDs, real dialogs, clipboard access, and URL opening. It never
+imports or forwards Tauri APIs, reads backend source/state, loads user projects,
+or launches commands. The isolated Vite config rejects unaliased native imports
+and removes the remote font import. CSP plus the browser suite's request guard
+restrict traffic to the fixture's loopback origin and fail unexpected requests
+or popups. No credentials or user files are used.
+
+`project-detection.spec.ts` uses mouse clicks, keyboard input and real native
+drag gestures. The draggable fixture sources create empty in-memory `File`
+objects during the browser's `dragstart`; tests never dispatch DOM events,
+inject application state, or access disk files. This checks browser drag/drop
+ownership, not native Windows folder-path extraction. Tests cover:
+
+- Older success/failure before and after a newer result; A → B → A ownership
+- Debounce cancellation, path clearing, shorter paths, trailing separators, and
+  closing/reopening before the timer fires
+- Manual name/command edits and templates during pending detection, deliberate
+  suggestion selection, and clearing old generated commands for no suggestions
+- Detection failure, explicit retry/manual recovery, disabled Save/Enter paths,
+  and exact add/update IPC payloads including environment values and options
+- Held picker selection, failure, cancellation/resumption, duplicate prevention,
+  and typed or dropped paths superseding the picker
+- Cancel, close, Escape, and backdrop dismissal followed by reopening; old
+  picker/detection/save completions cannot mutate or dismiss the new form
+- Failed save retaining its full draft for retry and the actual App edit route
+
+Each test attaches its synthetic ledger; selected cases also attach current
+generation, manual edits, failure, recovery, and native drag screenshots. Run only
+this suite with `npm run test:browser -- project-detection.spec.ts`. To build the
+isolated fixture without starting a browser:
+
+```sh
+npx vite build --config tests/browser/project-detection-vite.config.mjs --outDir /tmp/devboot-project-detection-fixture
+```
+
+Passing type checks, fixture builds, or test discovery does not establish browser
+acceptance. Run Chromium on the exact proposed commit before marking these
+frontend gates passed. The suite does not establish real filesystem detection,
+native folder-picker behavior, Windows/WebView2 behavior, real persistence, or
+OS process execution.
+
 ## Settings lifecycle
 
 The separate `settings.html` fixture imports the actual `App`, `Settings`, and
@@ -33,7 +90,7 @@ also block and fail unexpected network requests or popups.
 Hosted Chromium runs attach loading, read-error, preference-write-error,
 partial-startup-error, and recovered screenshots, plus each test's full synthetic
 command ledger. The existing pinned Playwright dependency and CI browser command
-discover both suites. Type checking, building this fixture, or test discovery
+discover all three suites. Type checking, building this fixture, or test discovery
 alone does not establish browser acceptance. These tests do not establish native
 Windows startup behavior or real settings persistence.
 

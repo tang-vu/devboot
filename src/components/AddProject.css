@@ -492,3 +492,15 @@
 .form-error {
     color: var(--error);
 }
+
+.detection-error {
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+}
+
+.detection-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}

@@ -11,6 +11,8 @@ interface AddProjectProps {
     onClose: () => void;
 }
 
+type DetectionPhase = 'idle' | 'picking' | 'pending' | 'error';
+
 export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     const [name, setName] = useState(project?.name || '');
     const [path, setPath] = useState(project?.path || '');
@@ -18,16 +20,28 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     const [projectType, setProjectType] = useState<string>('');
     const [framework, setFramework] = useState<string | null>(null);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [isDetecting, setIsDetecting] = useState(false);
+    const [detectionPhase, setDetectionPhase] = useState<DetectionPhase>('idle');
+    const [detectionError, setDetectionError] = useState('');
+    const [pickerError, setPickerError] = useState('');
     const [activeTab, setActiveTab] = useState<'commands' | 'env' | 'options'>('commands');
     const [isSaving, setIsSaving] = useState(false);
     const [environmentError, setEnvironmentError] = useState('');
     const savingRef = useRef(false);
     const mountedRef = useRef(false);
+    const detectionGeneration = useRef(0);
+    const detectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const phaseRef = useRef<DetectionPhase>('idle');
+    const pathRef = useRef(path);
+    const nameEdited = useRef(false);
+    const commandsEdited = useRef(false);
 
     useEffect(() => {
         mountedRef.current = true;
-        return () => { mountedRef.current = false; };
+        return () => {
+            mountedRef.current = false;
+            detectionGeneration.current += 1;
+            if (detectionTimer.current !== null) clearTimeout(detectionTimer.current);
+        };
     }, []);
     
     // Command suggestions
@@ -45,47 +59,94 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     const [autoStart, setAutoStart] = useState(project?.auto_start ?? true);
     const [restartOnCrash, setRestartOnCrash] = useState(project?.restart_on_crash ?? true);
 
-    // Sync selected suggestions to commands textarea
-    useEffect(() => {
-        if (suggestions.length > 0) {
-            const selectedCommands = suggestions
-                .filter((_, index) => selectedSuggestions.has(index))
-                .map(s => s.command);
-            setCommands(selectedCommands.join('\n'));
-        }
-    }, [selectedSuggestions, suggestions]);
+    const changeDetectionPhase = (phase: DetectionPhase) => {
+        phaseRef.current = phase;
+        setDetectionPhase(phase);
+    };
 
-    const detectProject = async (folderPath: string) => {
-        setIsDetecting(true);
+    const invalidateDetection = () => {
+        if (detectionTimer.current !== null) clearTimeout(detectionTimer.current);
+        detectionTimer.current = null;
+        return ++detectionGeneration.current;
+    };
+
+    const ownsDetection = (generation: number) => mountedRef.current
+        && !savingRef.current && generation === detectionGeneration.current;
+
+    const detectProject = async (folderPath: string, generation: number) => {
+        if (!ownsDetection(generation)) return;
         try {
             const detected = await invoke<DetectedProjectInfo>('detect_project_from_path', {
                 path: folderPath
             });
 
-            setName(detected.name);
-            setPath(folderPath);
+            if (!ownsDetection(generation)) return;
+            if (!nameEdited.current) setName(detected.name);
             setProjectType(detected.project_type);
             setFramework(detected.framework);
             setSuggestions(detected.suggestions);
 
-            // Auto-select recommended suggestions
+            // Automatic suggestions never replace deliberate edits in this form.
             const recommendedIndexes = new Set<number>();
             detected.suggestions.forEach((s, index) => {
-                if (s.is_recommended) {
+                if (s.is_recommended && !commandsEdited.current) {
                     recommendedIndexes.add(index);
                 }
             });
             setSelectedSuggestions(recommendedIndexes);
+            if (!commandsEdited.current) {
+                setCommands(detected.suggestions
+                    .filter((_, index) => recommendedIndexes.has(index))
+                    .map(s => s.command).join('\n'));
+            }
+            changeDetectionPhase('idle');
         } catch (error) {
-            console.error('Failed to detect project:', error);
-        } finally {
-            setIsDetecting(false);
+            if (!ownsDetection(generation)) return;
+            setDetectionError(`Project detection failed: ${error}`);
+            changeDetectionPhase('error');
         }
+    };
+
+    const choosePath = (folderPath: string, debounce = false) => {
+        if (savingRef.current) return;
+        const generation = invalidateDetection();
+        pathRef.current = folderPath;
+        setPath(folderPath);
+        setPickerError('');
+        setDetectionError('');
+        setProjectType('');
+        setFramework(null);
+        setSuggestions([]);
+        setSelectedSuggestions(new Set());
+        changeDetectionPhase(folderPath.trim() ? 'pending' : 'idle');
+        if (!folderPath.trim()) return;
+        if (debounce) {
+            detectionTimer.current = setTimeout(() => {
+                detectionTimer.current = null;
+                void detectProject(folderPath, generation);
+            }, 500);
+        } else {
+            void detectProject(folderPath, generation);
+        }
+    };
+
+    const closeForm = () => {
+        invalidateDetection();
+        onClose();
     };
 
     // Open folder picker dialog
     const handleBrowseFolder = async () => {
-        if (savingRef.current) return;
+        if (savingRef.current || phaseRef.current === 'picking') return;
+        const previousPhase = phaseRef.current;
+        const generation = invalidateDetection();
+        setPickerError('');
+        changeDetectionPhase('picking');
+        const restoreDraft = () => {
+            // Cancelling the picker resumes an interrupted path lookup, if any.
+            if (previousPhase === 'pending') choosePath(pathRef.current);
+            else changeDetectionPhase(previousPhase);
+        };
         try {
             const selected = await open({
                 directory: true,
@@ -93,11 +154,13 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                 title: 'Select Project Folder',
             });
             
-            if (selected && typeof selected === 'string') {
-                await detectProject(selected);
-            }
+            if (!ownsDetection(generation)) return;
+            if (selected && typeof selected === 'string') choosePath(selected);
+            else restoreDraft();
         } catch (error) {
-            console.error('Failed to open folder dialog:', error);
+            if (!ownsDetection(generation)) return;
+            restoreDraft();
+            setPickerError(`Could not open the folder picker. Type a path or try Browse again. ${error}`);
         }
     };
 
@@ -113,7 +176,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
         setIsDragOver(false);
     };
 
-    const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+    const handleDrop = (e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
@@ -128,19 +191,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                 folderPath = folderPath.substring(0, folderPath.lastIndexOf('\\'));
             }
 
-            await detectProject(folderPath);
-        }
-    };
-
-    const handlePathChange = async (newPath: string) => {
-        setPath(newPath);
-
-        if (newPath && !newPath.endsWith('/') && !newPath.endsWith('\\') && newPath.length > 5) {
-            setTimeout(() => {
-                if (newPath === path || newPath.length > path.length) {
-                    detectProject(newPath);
-                }
-            }, 500);
+            choosePath(folderPath);
         }
     };
 
@@ -152,13 +203,17 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
         } else {
             newSelected.add(index);
         }
+        commandsEdited.current = true;
         setSelectedSuggestions(newSelected);
+        setCommands(suggestions.filter((_, item) => newSelected.has(item)).map(s => s.command).join('\n'));
     };
 
     // Apply template
     const handleTemplateChange = (templateId: string) => {
         const template = projectTemplates.find(t => t.id === templateId);
         if (template) {
+            commandsEdited.current = true;
+            setSelectedSuggestions(new Set());
             setCommands(template.commands.join('\n'));
             // Also set env vars from template
             if (Object.keys(template.envVars).length > 0) {
@@ -186,7 +241,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (savingRef.current || !name.trim() || !path.trim()) return;
+        if (savingRef.current || phaseRef.current !== 'idle' || !name.trim() || !path.trim()) return;
 
         const commandList = commands
             .split('\n')
@@ -209,6 +264,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
             envVars.filter(({ key }) => key.trim()).map(({ key, value }) => [key.trim(), value])
         );
 
+        invalidateDetection();
         savingRef.current = true;
         setIsSaving(true);
         try {
@@ -224,27 +280,27 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay" onClick={closeForm}>
             <div className="modal add-project-modal" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>{project ? 'Edit Project' : 'Add Project'}</h2>
-                    <button className="close-btn" onClick={onClose}>x</button>
+                    <button className="close-btn" onClick={closeForm}>x</button>
                 </div>
 
                 <form onSubmit={handleSubmit}>
                     <fieldset className="modal-body project-fields" disabled={isSaving}>
                         {/* Drag & Drop Zone - also clickable */}
                         <div
-                            className={`drop-zone ${isDragOver ? 'drag-over' : ''} ${isDetecting ? 'detecting' : ''}`}
+                            className={`drop-zone ${isDragOver ? 'drag-over' : ''} ${detectionPhase === 'pending' ? 'detecting' : ''}`}
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
                             onClick={handleBrowseFolder}
                         >
-                            {isDetecting ? (
+                            {detectionPhase === 'pending' || detectionPhase === 'picking' ? (
                                 <>
                                     <span className="drop-icon">...</span>
-                                    <p>Detecting project type...</p>
+                                    <p role="status">{detectionPhase === 'picking' ? 'Choosing project folder...' : 'Detecting project type...'}</p>
                                 </>
                             ) : (
                                 <>
@@ -254,6 +310,23 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                 </>
                             )}
                         </div>
+
+                        {pickerError && <p className="form-error" role="alert">{pickerError}</p>}
+                        {detectionPhase === 'error' && (
+                            <div className="detection-error" role="alert">
+                                <p className="form-error">{detectionError}</p>
+                                <p>Your draft is unchanged. Retry detection, or continue manually and review the name and startup commands for this folder.</p>
+                                <div className="detection-actions">
+                                    <button type="button" className="btn btn-secondary" onClick={() => choosePath(pathRef.current)}>Retry detection</button>
+                                    <button type="button" className="btn btn-secondary" onClick={() => {
+                                        invalidateDetection();
+                                        setDetectionError('');
+                                        changeDetectionPhase('idle');
+                                        setActiveTab('commands');
+                                    }}>Continue manually</button>
+                                </div>
+                            </div>
+                        )}
 
                         {projectType && (
                             <div className="detected-type">
@@ -300,7 +373,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                 id="project-name"
                                 type="text"
                                 value={name}
-                                onChange={e => setName(e.target.value)}
+                                onChange={e => { nameEdited.current = true; setName(e.target.value); }}
                                 placeholder="e.g. My Bot"
                                 required
                             />
@@ -313,7 +386,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                     id="project-path"
                                     type="text"
                                     value={path}
-                                    onChange={e => handlePathChange(e.target.value)}
+                                    onChange={e => choosePath(e.target.value, true)}
                                     placeholder="e.g. C:/Users/You/Documents/GitHub/mybot"
                                     required
                                 />
@@ -321,6 +394,7 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                     type="button" 
                                     className="browse-btn"
                                     onClick={handleBrowseFolder}
+                                    disabled={detectionPhase === 'picking'}
                                 >
                                     Browse
                                 </button>
@@ -373,7 +447,11 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                                     <textarea
                                         id="project-commands"
                                         value={commands}
-                                        onChange={e => setCommands(e.target.value)}
+                                        onChange={e => {
+                                            commandsEdited.current = true;
+                                            setSelectedSuggestions(new Set());
+                                            setCommands(e.target.value);
+                                        }}
                                         placeholder={`source .venv/Scripts/activate\npython main.py`}
                                         rows={5}
                                     />
@@ -466,10 +544,10 @@ export function AddProject({ project, onSave, onClose }: AddProjectProps) {
                     </fieldset>
 
                     <div className="modal-footer">
-                        <button type="button" className="btn btn-secondary" onClick={onClose}>
+                        <button type="button" className="btn btn-secondary" onClick={closeForm}>
                             Cancel
                         </button>
-                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving || detectionPhase !== 'idle'}>
                             {isSaving ? 'Saving...' : project ? 'Save Changes' : 'Add Project'}
                         </button>
                     </div>

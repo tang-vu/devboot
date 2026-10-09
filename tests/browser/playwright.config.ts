@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
     testDir: '.',
-    testMatch: ['log-follow.spec.ts', 'settings.spec.ts'],
+    testMatch: ['log-follow.spec.ts', 'settings.spec.ts', 'project-detection.spec.ts'],
     fullyParallel: true,
     workers: 2,
     retries: 0,
@@ -24,6 +24,12 @@ export default defineConfig({
         command: 'npx vite --config tests/browser/vite.config.mjs',
         cwd: '../..',
         url: 'http://127.0.0.1:4179/tests/browser/log-follow.html',
+        reuseExistingServer: false,
+        timeout: 30_000,
+    }, {
+        command: 'npx vite --config tests/browser/project-detection-vite.config.mjs',
+        cwd: '../..',
+        url: 'http://127.0.0.1:4181/tests/browser/project-detection.html',
         reuseExistingServer: false,
         timeout: 30_000,
     }, {
