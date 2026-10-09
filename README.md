@@ -93,6 +93,18 @@ DevBoot stores its configuration in:
    - Project path
    - Commands to run (one per line)
 
+   Browse, drop a folder, or type its path to suggest a project name and commands.
+   Typed paths wait briefly before detection; only the latest folder choice can
+   update the form. Save waits until folder selection and detection finish.
+   If detection fails, choose **Retry detection**, or **Continue manually** and
+   review the name and commands before saving. Cancelling the folder picker keeps
+   the prior draft. Closing the form discards pending detection and unsaved edits.
+   Names and commands you edit, templates you apply, and suggestions you select
+   stay under your control for that form: later detection cannot overwrite them.
+   Selecting a suggestion explicitly replaces the command list with the checked
+   suggestions; typing commands or applying a template clears those checkmarks.
+   Detection only suggests configuration; it never starts a project.
+
 2. **Start/Stop Projects** - Use the play/stop buttons in the sidebar
 
 3. **View Logs** - Click on a project to see its real-time output

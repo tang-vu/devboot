@@ -1,5 +1,86 @@
 # Synthetic browser QA
 
+## Project detection ownership
+
+The separate `project-detection.html` fixture renders the actual `App`,
+`AddProject`, and project hook under root StrictMode. It listens on loopback port
+4181 using `project-detection-vite.config.mjs`, with a separate bridge and CSP.
+The log-follow and Settings fixtures retain their independent bridges and ports.
+
+Only a fixed set of synthetic folder names is accepted. Settings and the initial
+empty project list are in memory; folder pickers, detection, add, and update
+requests are held promises settled by native fixture buttons. Successful add and
+update requests change only the fixture-owned project list. Any resulting status
+and log reads return synthetic stopped/empty data. The retained JSON ledger
+captures every request, payload, completion, and denied operation. Per-operation
+names and commands distinguish an old result for A from a new result for A.
+
+The strict bridge rejects unknown commands, unexpected keys, non-synthetic
+paths/project IDs, real dialogs, clipboard access, and URL opening. It never
+imports or forwards Tauri APIs, reads backend source/state, loads user projects,
+or launches commands. The isolated Vite config rejects unaliased native imports
+and removes the remote font import. CSP plus the browser suite's request guard
+restrict traffic to the fixture's loopback origin and fail unexpected requests
+or popups. No credentials or user files are used.
+
+`project-detection.spec.ts` uses mouse clicks, keyboard input, and native wheel
+scrolling. Tests never dispatch DOM events or inject application state. Folder
+paths, picker results, and projects are synthetic data held in memory; no files
+are selected, read, or changed. Tests cover:
+
+- Older success/failure before and after a newer result; A → B → A ownership
+- Debounce cancellation, path clearing, shorter paths, trailing separators, and
+  closing/reopening before the timer fires
+- Manual name/command edits and templates during pending detection, deliberate
+  suggestion selection, and clearing old generated commands for no suggestions
+- Detection failure, explicit retry/manual recovery, disabled Save/Enter paths,
+  and exact add/update IPC payloads including environment values and options
+- Held picker selection, failure, cancellation/resumption, duplicate prevention,
+  and typed paths superseding the picker
+- Cancel, close, Escape, and backdrop dismissal followed by reopening; old
+  picker/detection/save completions cannot mutate or dismiss the new form
+- Failed save retaining its full draft for retry and the actual App edit route
+- Panel, header, footer, and control containment at 1280×900 and 1280×640;
+  native wheel and Tab reach recovery controls and bottom fields while only the
+  form body scrolls, including a fixed eight-suggestion result; the form itself,
+  header, and footer stay fixed
+
+Each test attaches its synthetic ledger; selected cases also attach current
+generation, manual edits, failure, and recovery screenshots. Geometry
+cases attach read-only measurements and pending/error/recovery/tall-content
+screenshots at both viewport sizes. Final panel/form/body/fieldset/control measurements
+are attached even if containment or actionability fails before a state capture.
+
+Textarea access has separate pointer and keyboard checks. Native wheel scrolling
+must expose the complete textarea and its center for pointer editing. Native Tab
+must focus an unobscured text line and support actual editing and restoration. A hosted run
+failed the earlier expectation that Tab would expose every empty textarea row:
+Chromium kept the focused first line visible while lower rows remained clipped.
+The suite retains full-control bounds and hit checks before and after wheel
+scrolling, plus independent first-line geometry and exact keyboard edit checks.
+
+OS file-drop transport is not covered by this browser suite. The hosted Chromium
+attempts delivered trusted drop events with an empty file list for both
+renderer-created and file-input-backed Files, so the unsupported harness was
+removed. Those attempts failed; they are not browser acceptance. Deterministic
+component tests in `tests/project-detection.test.tsx` retain drop ownership/race
+coverage, which does not establish Windows Explorer, Tauri file-drop, or native
+folder-picker behavior.
+
+Run only
+this suite with `npm run test:browser -- project-detection.spec.ts`. To build the
+isolated fixture without starting a browser:
+
+```sh
+npx vite build --config tests/browser/project-detection-vite.config.mjs --outDir /tmp/devboot-project-detection-fixture
+```
+
+Passing type checks, fixture builds, or test discovery does not establish browser
+acceptance. Run Chromium on the exact proposed commit before marking these
+frontend gates passed. The suite does not establish real filesystem detection,
+native folder-picker behavior, Windows/WebView2 behavior, real persistence, or
+OS process execution.
+
 ## Settings lifecycle
 
 The separate `settings.html` fixture imports the actual `App`, `Settings`, and
@@ -33,7 +114,7 @@ also block and fail unexpected network requests or popups.
 Hosted Chromium runs attach loading, read-error, preference-write-error,
 partial-startup-error, and recovered screenshots, plus each test's full synthetic
 command ledger. The existing pinned Playwright dependency and CI browser command
-discover both suites. Type checking, building this fixture, or test discovery
+discover all three suites. Type checking, building this fixture, or test discovery
 alone does not establish browser acceptance. These tests do not establish native
 Windows startup behavior or real settings persistence.
 

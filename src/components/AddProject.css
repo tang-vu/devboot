@@ -3,6 +3,14 @@
     max-height: calc(100vh - 40px);
 }
 
+.add-project-modal > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* Drag & Drop Zone */
 .drop-zone {
     border: 2px dashed rgba(255, 255, 255, 0.2);
@@ -486,9 +494,30 @@
 .project-fields {
     border: 0;
     margin: 0;
+    padding: 0;
     min-width: 0;
 }
 
 .form-error {
     color: var(--error);
+}
+
+.detection-error {
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+}
+
+.detection-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.add-project-modal .btn-primary:disabled,
+.add-project-modal .browse-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
 }

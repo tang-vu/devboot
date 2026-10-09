@@ -31,6 +31,8 @@ beforeEach(() => {
             };
             case 'get_project_status': return 'stopped';
             case 'get_project_log_snapshot': return logSnapshot(args.projectId);
+            case 'detect_project_from_path':
+                return { name: 'New fixture', project_type: 'fixture', framework: null, suggestions: [] };
             case 'add_project': {
                 const project: Project = {
                     ...original, id: 'synthetic-added', name: args.name, path: args.path,
@@ -53,7 +55,7 @@ afterEach(() => {
     cleanup();
     expect(bridge.invoke.mock.calls.every(([command]) => [
         'get_projects', 'get_settings', 'get_project_status', 'get_project_log_snapshot',
-        'add_project', 'update_project',
+        'add_project', 'update_project', 'detect_project_from_path',
     ].includes(command))).toBe(true);
 });
 
@@ -63,6 +65,7 @@ async function openAdd(user: User) {
     await user.type(screen.getByLabelText('Project Name'), 'New fixture');
     await user.click(screen.getByLabelText('Project Path'));
     await user.paste('C:/synthetic/new/');
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Add Project' }).disabled).toBe(false));
 }
 
 async function openEnvironment(user: User) {

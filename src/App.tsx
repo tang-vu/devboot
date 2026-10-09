@@ -287,6 +287,7 @@ function AppContent() {
 
       {editingProject && (
         <AddProject
+          key={editingProject.id}
           project={editingProject}
           onSave={handleUpdateProject}
           onClose={() => setEditingProject(null)}

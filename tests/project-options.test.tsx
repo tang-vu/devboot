@@ -48,6 +48,8 @@ beforeEach(() => {
                 return 'stopped';
             case 'get_project_log_snapshot':
                 return logSnapshot(args.projectId);
+            case 'detect_project_from_path':
+                return { name: 'New fixture', project_type: 'fixture', framework: null, suggestions: [] };
             case 'add_project': {
                 // Model the IPC response only; no native process or config file is accessed.
                 const project: Project = {
@@ -79,7 +81,7 @@ afterEach(() => {
     // Saving project choices must never change global startup or launch a process.
     const permitted = [
         'get_projects', 'get_settings', 'get_project_status', 'get_project_log_snapshot',
-        'add_project', 'update_project',
+        'add_project', 'update_project', 'detect_project_from_path',
     ];
     expect(bridge.invoke.mock.calls.every(([command]) => permitted.includes(command))).toBe(true);
 });
@@ -88,10 +90,10 @@ async function openAdd(user: User) {
     await screen.findAllByRole('button', { name: '+ Add Project' });
     await user.click(screen.getAllByRole('button', { name: '+ Add Project' })[0]);
     await user.type(screen.getByLabelText('Project Name'), 'New fixture');
-    // The trailing slash avoids unrelated project detection in this synthetic form.
     await user.click(screen.getByLabelText('Project Path'));
     await user.paste('C:/synthetic/new/');
     await user.type(screen.getByLabelText('Startup Commands'), 'echo first{Enter}echo second');
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Add Project' }).disabled).toBe(false));
 }
 
 async function chooseOptions(user: User, options: typeof combinations[number]) {
@@ -259,6 +261,7 @@ describe('project option persistence through the form, App and useProjects', () 
         await user.type(screen.getByLabelText('Project Name'), 'Keyboard fixture');
         await user.click(screen.getByLabelText('Project Path'));
         await user.paste('C:/synthetic/keyboard/');
+        await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Add Project' }).disabled).toBe(false));
         await user.click(screen.getByRole('button', { name: 'Options' }));
         await user.tab();
         expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: /Auto-start on launch/ }));
